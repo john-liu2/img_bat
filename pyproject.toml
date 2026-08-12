@@ -1,0 +1,30 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "cmake>=3.21", "ninja; platform_system != 'Windows'"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "bat-img-cpp"
+version = "0.0.1"
+description = "Cross-platform C++ batch image processing CLI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "John Liu" }]
+classifiers = [
+  "Environment :: Console",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Multimedia :: Graphics",
+]
+
+[project.scripts]
+bat_img = "bat_img_cpp:main"
+
+[tool.scikit-build]
+cmake.build-type = "Release"
+wheel.packages = ["python/bat_img_cpp"]
+install.components = ["default"]
+
+[tool.scikit-build.cmake.define]
+BAT_IMG_ENABLE_METADATA = "ON"
+BAT_IMG_ENABLE_HEIC = "ON"
