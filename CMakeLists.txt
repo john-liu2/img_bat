@@ -62,5 +62,5 @@ if(BUILD_TESTING)
 endif()
 
 install(TARGETS bat_img
-  RUNTIME DESTINATION bat_img_cpp/bin
-  BUNDLE DESTINATION bat_img_cpp/bin)
+  RUNTIME DESTINATION bat_img_cpp/bin COMPONENT default
+  BUNDLE DESTINATION bat_img_cpp/bin COMPONENT default)

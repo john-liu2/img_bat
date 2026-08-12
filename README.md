@@ -6,7 +6,7 @@ encoding, and uses Exiv2 to remove metadata.
 
 ## Supported platforms
 
-- macOS (Apple Silicon and Intel)
+- macOS (Apple Silicon)
 - Linux (x86_64 and ARM64)
 - Windows (x86_64)
 
@@ -51,6 +51,17 @@ python -m pip install build
 python -m build
 python -m pip install dist/*.whl
 bat_img --input ./photos --recursive --resize 1920x0 --format webp --output ./out
+```
+
+## Make targets
+
+```bash
+make build-debug     # configure and build Debug
+make test            # build Debug and run CTest
+make build-release   # configure and build Release
+make wheel           # build a release PEP 517 wheel in dist/
+make wheel-check     # install the wheel in a temporary venv and run bat_img --help
+make clean           # remove build/ and dist/
 ```
 
 ## HEIC

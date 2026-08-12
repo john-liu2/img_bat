@@ -154,7 +154,7 @@ static void usage() {
             << "  -i, --input PATH       Input file or directory (repeatable)\n"
             << "  -o, --output DIR       Output directory; omit for in-place processing\n"
             << "  -r, --resize WxH       Resize; use 0 for aspect-ratio auto sizing\n"
-            << "  -f, --format FORMAT    jpg, png, webp, tiff, bmp, gif, heic\n"
+            << "  -f, --format FORMAT    heic, jpg, png, webp, tiff, bmp, gif\n"
             << "  -q, --quality N        JPEG/WebP quality (1-100; default 90)\n"
             << "  -t, --threads N        Worker threads (default: logical CPUs)\n"
             << "      --rotate DEG        90, 180, or 270\n"
