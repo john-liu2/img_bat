@@ -6,6 +6,10 @@
 #include <exiv2/exiv2.hpp>
 #endif
 
+#ifdef BAT_IMG_WITH_LIBHEIF
+#include <libheif/heif.h>
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <cctype>
@@ -54,6 +58,83 @@ static bool is_image(const fs::path& path) {
          ext == ".tif" || ext == ".tiff" || ext == ".bmp" || ext == ".gif" ||
          ext == ".heic" || ext == ".heif";
 }
+
+#ifdef BAT_IMG_WITH_LIBHEIF
+static void check_heif(heif_error error, const std::string& action) {
+  if (error.code != heif_error_Ok) throw std::runtime_error(action + ": " + error.message);
+}
+
+static cv::Mat read_heif(const fs::path& path) {
+  heif_context* context = heif_context_alloc();
+  heif_image_handle* handle = nullptr;
+  heif_image* decoded = nullptr;
+  try {
+    check_heif(heif_context_read_from_file(context, path.string().c_str(), nullptr), "cannot read HEIC");
+    check_heif(heif_context_get_primary_image_handle(context, &handle), "cannot open HEIC image");
+    const bool alpha = heif_image_handle_has_alpha_channel(handle) != 0;
+    const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
+    check_heif(heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr), "cannot decode HEIC");
+    int stride = 0;
+    const uint8_t* pixels = heif_image_get_plane_readonly(decoded, heif_channel_interleaved, &stride);
+    if (!pixels) throw std::runtime_error("cannot access decoded HEIC pixels");
+    const int type = alpha ? CV_8UC4 : CV_8UC3;
+    cv::Mat rgb(heif_image_get_height(decoded, heif_channel_interleaved),
+                heif_image_get_width(decoded, heif_channel_interleaved), type,
+                const_cast<uint8_t*>(pixels), stride);
+    cv::Mat result;
+    cv::cvtColor(rgb, result, alpha ? cv::COLOR_RGBA2BGRA : cv::COLOR_RGB2BGR);
+    heif_image_release(decoded);
+    heif_image_handle_release(handle);
+    heif_context_free(context);
+    return result;
+  } catch (...) {
+    if (decoded) heif_image_release(decoded);
+    if (handle) heif_image_handle_release(handle);
+    heif_context_free(context);
+    throw;
+  }
+}
+
+static void write_heif(const fs::path& path, const cv::Mat& input, int quality) {
+  cv::Mat bgr;
+  if (input.depth() != CV_8U) input.convertTo(bgr, CV_8U);
+  else bgr = input;
+  cv::Mat rgb;
+  if (bgr.channels() == 1) cv::cvtColor(bgr, rgb, cv::COLOR_GRAY2RGB);
+  else if (bgr.channels() == 3) cv::cvtColor(bgr, rgb, cv::COLOR_BGR2RGB);
+  else if (bgr.channels() == 4) cv::cvtColor(bgr, rgb, cv::COLOR_BGRA2RGBA);
+  else throw std::runtime_error("HEIC output requires a 1-, 3-, or 4-channel image");
+
+  heif_context* context = heif_context_alloc();
+  heif_image* image = nullptr;
+  heif_encoder* encoder = nullptr;
+  heif_image_handle* output_handle = nullptr;
+  try {
+    const bool alpha = rgb.channels() == 4;
+    const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
+    check_heif(heif_image_create(rgb.cols, rgb.rows, heif_colorspace_RGB, chroma, &image), "cannot create HEIC image");
+    check_heif(heif_image_add_plane(image, heif_channel_interleaved, rgb.cols, rgb.rows, 8), "cannot allocate HEIC pixels");
+    int stride = 0;
+    uint8_t* pixels = heif_image_get_plane(image, heif_channel_interleaved, &stride);
+    for (int row = 0; row < rgb.rows; ++row)
+      std::copy(rgb.ptr<uint8_t>(row), rgb.ptr<uint8_t>(row) + rgb.cols * rgb.elemSize(), pixels + row * stride);
+    check_heif(heif_context_get_encoder_for_format(context, heif_compression_HEVC, &encoder), "HEIC encoder unavailable");
+    check_heif(heif_encoder_set_lossy_quality(encoder, quality), "cannot set HEIC quality");
+    check_heif(heif_context_encode_image(context, image, encoder, nullptr, &output_handle), "cannot encode HEIC");
+    check_heif(heif_context_write_to_file(context, path.string().c_str()), "cannot write HEIC");
+    heif_image_handle_release(output_handle);
+    heif_encoder_release(encoder);
+    heif_image_release(image);
+    heif_context_free(context);
+  } catch (...) {
+    if (output_handle) heif_image_handle_release(output_handle);
+    if (encoder) heif_encoder_release(encoder);
+    if (image) heif_image_release(image);
+    heif_context_free(context);
+    throw;
+  }
+}
+#endif
 
 static std::pair<int, int> parse_resize(const std::string& spec) {
   const auto separator = spec.find('x');
@@ -147,23 +228,52 @@ static std::vector<fs::path> collect_files(const Options& opt) {
   return paths;
 }
 
-static void strip_metadata(const fs::path& path, bool gps_only) {
+struct Metadata {
+#ifdef BAT_IMG_WITH_EXIV2
+  Exiv2::ExifData exif;
+  Exiv2::IptcData iptc;
+  Exiv2::XmpData xmp;
+#endif
+};
+
+static Metadata read_metadata(const fs::path& path) {
+  Metadata metadata;
+#ifdef BAT_IMG_WITH_EXIV2
+  auto image = Exiv2::ImageFactory::open(path.string());
+  if (!image.get()) return metadata;
+  image->readMetadata();
+  metadata.exif = image->exifData();
+  metadata.iptc = image->iptcData();
+  metadata.xmp = image->xmpData();
+#else
+  (void)path;
+#endif
+  return metadata;
+}
+
+static void restore_and_strip_metadata(const fs::path& path, const Metadata& metadata, bool strip_all, bool strip_gps) {
 #ifdef BAT_IMG_WITH_EXIV2
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) throw std::runtime_error("cannot open metadata: " + path.string());
   image->readMetadata();
-  if (gps_only) {
+  if (!strip_all) {
+    image->setExifData(metadata.exif);
+    image->setIptcData(metadata.iptc);
+    image->setXmpData(metadata.xmp);
+  }
+  if (strip_all) {
+    image->clearExifData(); image->clearIptcData(); image->clearXmpData();
+  } else if (strip_gps) {
     auto& exif = image->exifData();
     for (auto it = exif.begin(); it != exif.end();) {
       if (it->groupName().find("GPS") != std::string::npos) it = exif.erase(it); else ++it;
     }
-  } else {
-    image->clearExifData(); image->clearIptcData(); image->clearXmpData();
   }
   image->writeMetadata();
 #else
-  (void)path; (void)gps_only;
-  throw std::runtime_error("metadata support was not built; install Exiv2 and rebuild");
+  (void)path; (void)metadata;
+  if (strip_all || strip_gps)
+    throw std::runtime_error("metadata support was not built; install Exiv2 and rebuild");
 #endif
 }
 
@@ -180,7 +290,20 @@ static void process_one(const fs::path& input, const Options& opt) {
   if (!opt.overwrite && output != input && fs::exists(output)) return;
   if (output.has_parent_path()) fs::create_directories(output.parent_path());
 
-  cv::Mat image = cv::imread(input.string(), cv::IMREAD_UNCHANGED);
+  // OpenCV/libheif encoders do not copy metadata.  Only load it when a
+  // stripping operation needs to distinguish GPS from other EXIF tags.
+  const Metadata metadata = (opt.strip_all || opt.strip_gps) ? read_metadata(input) : Metadata{};
+  const auto input_ext = lower(input.extension().string());
+  cv::Mat image;
+  if (input_ext == ".heic" || input_ext == ".heif") {
+#ifdef BAT_IMG_WITH_LIBHEIF
+    image = read_heif(input);
+#else
+    throw std::runtime_error("HEIC support was not built; install libheif and rebuild");
+#endif
+  } else {
+    image = cv::imread(input.string(), cv::IMREAD_UNCHANGED);
+  }
   if (image.empty()) throw std::runtime_error("cannot decode " + input.string());
   if (opt.grayscale) cv::cvtColor(image, image, cv::COLOR_BGR2GRAY);
   if (opt.resize) {
@@ -202,8 +325,19 @@ static void process_one(const fs::path& input, const Options& opt) {
   const auto ext = lower(output.extension().string());
   if (ext == ".jpg" || ext == ".jpeg") params = {cv::IMWRITE_JPEG_QUALITY, opt.quality};
   if (ext == ".webp") params = {cv::IMWRITE_WEBP_QUALITY, opt.quality};
-  if (!cv::imwrite(output.string(), image, params)) throw std::runtime_error("cannot write " + output.string());
-  if (opt.strip_all || opt.strip_gps) strip_metadata(output, opt.strip_gps && !opt.strip_all);
+  if (ext == ".heic" || ext == ".heif") {
+#ifdef BAT_IMG_WITH_LIBHEIF
+    write_heif(output, image, opt.quality);
+#else
+    throw std::runtime_error("HEIC support was not built; install libheif and rebuild");
+#endif
+  } else if (!cv::imwrite(output.string(), image, params)) {
+    throw std::runtime_error("cannot write " + output.string());
+  }
+  // libheif output is metadata-free, and Exiv2 cannot write metadata to all
+  // BMFF/HEIC variants.  There is therefore nothing to strip in that case.
+  if ((opt.strip_all || opt.strip_gps) && ext != ".heic" && ext != ".heif")
+    restore_and_strip_metadata(output, metadata, opt.strip_all, opt.strip_gps);
 }
 
 int main(int argc, char** argv) {
