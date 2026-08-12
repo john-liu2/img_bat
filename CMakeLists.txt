@@ -52,6 +52,8 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME cli-heic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:bat_img> --mode heic)
+  add_test(NAME cli-status COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
+           --binary $<TARGET_FILE:bat_img> --mode status)
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
     if(EXIV2_EXECUTABLE)

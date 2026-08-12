@@ -35,7 +35,7 @@ build-release:
 	$(CMAKE) -S . -B $(RELEASE_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
 	$(CMAKE) --build $(RELEASE_BUILD) --parallel $(BUILD_JOBS)
 
-wheel:
+wheel: build-release
 	$(PYTHON) -m pip wheel --no-deps --wheel-dir $(DIST_DIR) .
 
 wheel-check: wheel
