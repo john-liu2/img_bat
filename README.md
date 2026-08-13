@@ -68,6 +68,10 @@ make clean           # remove build/ and dist/
 
 HEIC and HEIF input/output use libheif directly, independent of OpenCV's codec
 plugins. libheif needs an HEVC encoder (for example x265) to write `.heic`.
+The default HEIC quality is 50 (a photo-oriented setting); pass `--quality N`
+to choose a value from 1 to 100 explicitly. Metadata-only HEIC operations
+preserve non-GPS EXIF/XMP but must currently re-encode the image because Exiv2
+cannot write BMFF/HEIC containers.
 The CTest suite performs an end-to-end JPEG → HEIC → PNG conversion when
 `BAT_IMG_ENABLE_HEIC` is enabled. Metadata tests also verify that `--strip-gps`
 removes GPS tags while retaining other EXIF, and that `--strip-all` removes it all.

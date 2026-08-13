@@ -33,6 +33,7 @@ struct Options {
   std::optional<std::string> format;
   std::optional<std::pair<int, int>> resize;
   int quality = 90;
+  bool quality_specified = false;
   int threads = static_cast<int>(std::thread::hardware_concurrency());
   int rotate = 0;
   int border = 0;
@@ -215,7 +216,10 @@ static Options parse_args(int argc, char** argv) {
     else if (arg == "-o" || arg == "--output") opt.output = require_value(i, arg.c_str());
     else if (arg == "-r" || arg == "--resize") opt.resize = parse_resize(require_value(i, arg.c_str()));
     else if (arg == "-f" || arg == "--format") opt.format = lower(require_value(i, arg.c_str()));
-    else if (arg == "-q" || arg == "--quality") opt.quality = std::stoi(require_value(i, arg.c_str()));
+    else if (arg == "-q" || arg == "--quality") {
+      opt.quality = std::stoi(require_value(i, arg.c_str()));
+      opt.quality_specified = true;
+    }
     else if (arg == "-t" || arg == "--threads") opt.threads = std::stoi(require_value(i, arg.c_str()));
     else if (arg == "--rotate") opt.rotate = std::stoi(require_value(i, arg.c_str()));
     else if (arg == "--border") opt.border = std::stoi(require_value(i, arg.c_str()));
@@ -454,7 +458,10 @@ static void process_one(const fs::path& input, const Options& opt) {
   if (ext == ".webp") params = {cv::IMWRITE_WEBP_QUALITY, opt.quality};
   if (ext == ".heic" || ext == ".heif") {
 #ifdef BAT_IMG_WITH_LIBHEIF
-    write_heif(output, image, opt.quality, metadata, opt.strip_all, opt.strip_gps);
+    // HEIC encoders interpret quality differently from JPEG. A quality of 50
+    // is a typical photographic HEIC setting; retain an explicit -q override.
+    const int heic_quality = opt.quality_specified ? opt.quality : 50;
+    write_heif(output, image, heic_quality, metadata, opt.strip_all, opt.strip_gps);
 #else
     throw std::runtime_error("HEIC support was not built; install libheif and rebuild");
 #endif

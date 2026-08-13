@@ -46,6 +46,12 @@ def test_heic(binary: str, directory: Path) -> None:
     run(binary, "--input", str(heic), "--format", "png", "--output", str(png_dir), "--quiet")
     assert (png_dir / "source.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "HEIC input did not decode to PNG"
 
+    # An explicit quality value remains available when the default photo
+    # setting is not appropriate for a particular workflow.
+    quality_dir = directory / "quality"
+    run(binary, "--input", str(source), "--format", "heic", "--quality", "80", "--output", str(quality_dir), "--quiet")
+    assert (quality_dir / "source.heic").exists(), "explicit HEIC quality did not produce output"
+
 
 def metadata_keys(exiv2: str, path: Path) -> str:
     return run(exiv2, "-pa", str(path)).stdout
