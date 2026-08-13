@@ -15,6 +15,7 @@
 #include <cctype>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -400,6 +401,133 @@ static void strip_metadata_in_place(const fs::path& path, bool strip_all, bool s
 #endif
 }
 
+#if defined(BAT_IMG_WITH_EXIV2) && defined(BAT_IMG_WITH_LIBHEIF)
+static uint64_t read_be(const std::vector<uint8_t>& data, size_t offset, size_t width) {
+  if (width > 8 || offset + width > data.size()) throw std::runtime_error("invalid BMFF metadata box");
+  uint64_t value = 0;
+  for (size_t i = 0; i < width; ++i) value = (value << 8) | data[offset + i];
+  return value;
+}
+
+static void write_be(std::vector<uint8_t>& data, size_t offset, size_t width, uint64_t value) {
+  if (width > 8 || offset + width > data.size() || (width < 8 && value >= (uint64_t{1} << (width * 8))))
+    throw std::runtime_error("BMFF metadata value does not fit its field");
+  for (size_t i = 0; i < width; ++i) data[offset + width - 1 - i] = static_cast<uint8_t>(value >> (i * 8));
+}
+
+struct BmffBox { size_t start; size_t header; size_t end; std::string type; };
+
+static std::vector<BmffBox> bmff_children(const std::vector<uint8_t>& data, size_t begin, size_t end) {
+  std::vector<BmffBox> boxes;
+  while (begin + 8 <= end) {
+    uint64_t size = read_be(data, begin, 4);
+    size_t header = 8;
+    if (size == 1) { size = read_be(data, begin + 8, 8); header = 16; }
+    else if (size == 0) size = end - begin;
+    if (size < header || size > end - begin) throw std::runtime_error("invalid BMFF box size");
+    boxes.push_back({begin, header, begin + static_cast<size_t>(size),
+                     std::string(reinterpret_cast<const char*>(data.data() + begin + 4), 4)});
+    begin += static_cast<size_t>(size);
+  }
+  if (begin != end)
+    throw std::runtime_error("invalid BMFF box alignment at " + std::to_string(begin) + " of " + std::to_string(end));
+  return boxes;
+}
+
+static const BmffBox& bmff_box(const std::vector<BmffBox>& boxes, const char* type) {
+  for (const auto& box : boxes) if (box.type == type) return box;
+  throw std::runtime_error(std::string("BMFF box not found: ") + type);
+}
+
+// Fast HEIC GPS removal. This updates only the Exif item and its iloc length;
+// the compressed HEVC payload remains byte-for-byte untouched.
+static bool strip_gps_heif_losslessly(const fs::path& path) {
+  std::ifstream input(path, std::ios::binary);
+  std::vector<uint8_t> data((std::istreambuf_iterator<char>(input)), {});
+  if (data.empty()) throw std::runtime_error("cannot read HEIC file");
+  const auto top_level = bmff_children(data, 0, data.size());
+  const auto& meta = bmff_box(top_level, "meta");
+  const auto children = bmff_children(data, meta.start + meta.header + 4, meta.end);
+  const auto& iinf = bmff_box(children, "iinf");
+  const auto& iloc = bmff_box(children, "iloc");
+
+  uint32_t exif_id = 0;
+  const auto infos = bmff_children(data, iinf.start + iinf.header + 6, iinf.end);
+  for (const auto& infe : infos) {
+    if (infe.type != "infe" || infe.start + infe.header + 12 > infe.end) continue;
+    const size_t p = infe.start + infe.header;
+    const uint8_t version = data[p];
+    if (version < 2) continue;
+    const uint32_t id = static_cast<uint32_t>(read_be(data, p + 4, version == 2 ? 2 : 4));
+    const size_t type_offset = p + 4 + (version == 2 ? 2 : 4) + 2;
+    if (type_offset + 4 <= infe.end && std::string(reinterpret_cast<const char*>(data.data() + type_offset), 4) == "Exif") {
+      exif_id = id;
+      break;
+    }
+  }
+  if (exif_id == 0) return true;  // No EXIF item means there is no EXIF GPS to remove.
+
+  size_t p = iloc.start + iloc.header;
+  const uint8_t version = data[p]; p += 4;
+  const uint8_t sizes = data[p++];
+  const size_t offset_size = sizes >> 4, length_size = sizes & 0x0f;
+  const uint8_t sizes2 = data[p++];
+  const size_t base_offset_size = sizes2 >> 4, index_size = sizes2 & 0x0f;
+  const uint32_t item_count = static_cast<uint32_t>(read_be(data, p, version < 2 ? 2 : 4)); p += version < 2 ? 2 : 4;
+  size_t exif_data_offset = 0, exif_length_offset = 0, exif_length = 0;
+  for (uint32_t item = 0; item < item_count; ++item) {
+    const uint32_t id = static_cast<uint32_t>(read_be(data, p, version < 2 ? 2 : 4)); p += version < 2 ? 2 : 4;
+    uint16_t method = 0;
+    if (version == 1 || version == 2) { method = static_cast<uint16_t>(read_be(data, p, 2) & 0x0fff); p += 2; }
+    p += 2;  // data_reference_index
+    const uint64_t base = read_be(data, p, base_offset_size); p += base_offset_size;
+    const uint16_t extent_count = static_cast<uint16_t>(read_be(data, p, 2)); p += 2;
+    for (uint16_t extent = 0; extent < extent_count; ++extent) {
+      if ((version == 1 || version == 2) && index_size) p += index_size;
+      const uint64_t relative = read_be(data, p, offset_size); p += offset_size;
+      const size_t length_offset = p;
+      const uint64_t length = read_be(data, p, length_size); p += length_size;
+      if (id == exif_id && extent == 0 && method == 0 && extent_count == 1) {
+        exif_data_offset = static_cast<size_t>(base + relative);
+        exif_length_offset = length_offset;
+        exif_length = static_cast<size_t>(length);
+      }
+    }
+  }
+  if (exif_length < 8 || exif_data_offset + exif_length > data.size())
+    throw std::runtime_error("unsupported HEIC EXIF item layout");
+
+  // A HEIF Exif item begins with a 4-byte big-endian offset to the TIFF
+  // header. Apple files commonly use a non-zero offset and include an "Exif"
+  // identifier between the offset field and TIFF header.
+  const size_t tiff_offset = static_cast<size_t>(read_be(data, exif_data_offset, 4));
+  const size_t tiff_start = exif_data_offset + 4 + tiff_offset;
+  if (tiff_start >= exif_data_offset + exif_length)
+    throw std::runtime_error("invalid TIFF offset in HEIC EXIF item");
+
+  Exiv2::Blob encoded;
+  {
+    std::lock_guard<std::mutex> lock(metadata_mutex);
+    Exiv2::ExifData exif;
+    Exiv2::ExifParser::decode(exif, data.data() + tiff_start, exif_data_offset + exif_length - tiff_start);
+    for (auto it = exif.begin(); it != exif.end();) {
+      if (it->groupName().find("GPS") != std::string::npos) it = exif.erase(it); else ++it;
+    }
+    Exiv2::ExifParser::encode(encoded, Exiv2::littleEndian, exif);
+  }
+  std::vector<uint8_t> replacement(data.begin() + exif_data_offset, data.begin() + tiff_start);
+  replacement.insert(replacement.end(), encoded.begin(), encoded.end());
+  if (replacement.size() > exif_length) return false;
+  std::copy(replacement.begin(), replacement.end(), data.begin() + exif_data_offset);
+  write_be(data, exif_length_offset, length_size, replacement.size());
+
+  const fs::path temporary = path.string() + ".bat-img-tmp";
+  { std::ofstream output(temporary, std::ios::binary | std::ios::trunc); output.write(reinterpret_cast<const char*>(data.data()), data.size()); }
+  fs::rename(temporary, path);
+  return true;
+}
+#endif
+
 static fs::path output_path(const fs::path& input, const Options& opt) {
   std::string extension = opt.format ? *opt.format : input.extension().string().substr(1);
   if (extension == "jpeg") extension = "jpg";
@@ -416,6 +544,11 @@ static void process_one(const fs::path& input, const Options& opt) {
   const bool image_transform_requested = opt.format || opt.resize || opt.grayscale || opt.flip_h || opt.flip_v ||
                                        opt.rotate != 0 || opt.border != 0 || opt.brightness != 0.0 || opt.contrast != 1.0;
   const bool is_heif = lower(input.extension().string()) == ".heic" || lower(input.extension().string()) == ".heif";
+  if (output == input && is_heif && !image_transform_requested && opt.strip_gps && !opt.strip_all) {
+#if defined(BAT_IMG_WITH_EXIV2) && defined(BAT_IMG_WITH_LIBHEIF)
+    if (strip_gps_heif_losslessly(input)) return;
+#endif
+  }
   if (output == input && !is_heif && !image_transform_requested && (opt.strip_all || opt.strip_gps)) {
     strip_metadata_in_place(input, opt.strip_all, opt.strip_gps);
     return;
@@ -423,7 +556,8 @@ static void process_one(const fs::path& input, const Options& opt) {
 
   // OpenCV/libheif encoders do not copy metadata.  Only load it when a
   // stripping operation needs to distinguish GPS from other EXIF tags.
-  const Metadata metadata = (opt.strip_all || opt.strip_gps) ? read_metadata(input) : Metadata{};
+  const Metadata metadata = (opt.strip_all || opt.strip_gps || is_heif || opt.format == "heic" || opt.format == "heif")
+                                ? read_metadata(input) : Metadata{};
   const auto input_ext = lower(input.extension().string());
   cv::Mat image;
   if (input_ext == ".heic" || input_ext == ".heif") {

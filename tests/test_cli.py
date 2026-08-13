@@ -72,17 +72,20 @@ def test_metadata(binary: str, exiv2: str, directory: Path) -> None:
     inplace_keys = metadata_keys(exiv2, source)
     assert "Exif.Image.ImageDescription" in inplace_keys and "GPSLatitude" not in inplace_keys, "in-place --strip-gps removed non-GPS metadata"
 
-    # Exiv2 cannot write HEIC/BMFF. Verify that the libheif fallback preserves
-    # non-GPS EXIF when it rewrites a HEIC source.
+    # GPS-only edits on HEIC use the in-process BMFF editor: the compressed
+    # image item stays untouched, so the file size remains unchanged.
     heic_source = directory / "heic-source.jpg"
     shutil.copyfile(source, heic_source)
     run(exiv2, "-M", "set Exif.GPSInfo.GPSLatitudeRef N", "-M", "set Exif.GPSInfo.GPSLatitude 1/1 2/1 3/1", str(heic_source))
     heic_dir = directory / "heic"
-    run(binary, "--input", str(heic_source), "--format", "heic", "--output", str(heic_dir), "--strip-gps", "--quiet")
+    run(binary, "--input", str(heic_source), "--format", "heic", "--output", str(heic_dir), "--quiet")
     heic = heic_dir / "heic-source.heic"
+    before_size = heic.stat().st_size
+    assert "GPSLatitude" in metadata_keys(exiv2, heic), "HEIC fixture has no GPS metadata"
     run(binary, "--input", str(heic), "--strip-gps", "--quiet")
     heic_keys = metadata_keys(exiv2, heic)
     assert "Exif.Image.ImageDescription" in heic_keys and "GPSLatitude" not in heic_keys, "HEIC --strip-gps removed non-GPS metadata"
+    assert heic.stat().st_size == before_size, "HEIC GPS stripping re-encoded the image"
 
     batch, batch_out = directory / "batch", directory / "batch-out"
     batch.mkdir()
