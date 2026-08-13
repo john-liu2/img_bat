@@ -1,4 +1,4 @@
-"""Python entry point for the native ``bat_img`` executable."""
+"""Python entry point for the native ``img_bat`` executable."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from importlib.resources import files
 
 
 def _binary_path() -> str:
-    name = "bat_img.exe" if os.name == "nt" else "bat_img"
+    name = "img_bat.exe" if os.name == "nt" else "img_bat"
     binary = files(__package__).joinpath("bin", name)
     return os.fspath(binary)
 
@@ -19,5 +19,5 @@ def main() -> None:
     try:
         completed = subprocess.run([_binary_path(), *sys.argv[1:]], check=False)
     except FileNotFoundError as exc:
-        raise SystemExit("bat_img native executable was not installed correctly") from exc
+        raise SystemExit("img_bat native executable was not installed correctly") from exc
     raise SystemExit(completed.returncode)

@@ -1,8 +1,8 @@
-# bat-img-cpp
+# img-bat
 
-`bat-img-cpp` is a cross-platform C++ batch image-processing command-line tool,
+`img-bat` is a cross-platform C++ batch image-processing command-line tool,
 packaged as a Python wheel. It uses OpenCV for decoding, transformations, and
-encoding, and uses Exiv2 to remove metadata.
+encoding, and Exiv2 to handle metadata.
 
 ## Supported platforms
 
@@ -12,7 +12,7 @@ encoding, and uses Exiv2 to remove metadata.
 
 Each release needs a wheel built on (or cross-compiled for) the target platform.
 The native executable is installed inside the wheel, while Python only provides
-the `bat_img` console-script launcher.
+the `img_bat` console-script launcher.
 
 ## Build prerequisites
 
@@ -41,7 +41,7 @@ vcpkg install opencv4 exiv2 libheif
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-./build/bat_img --help
+./build/img_bat --help
 ```
 
 Build a wheel:
@@ -50,7 +50,7 @@ Build a wheel:
 python -m pip install build
 python -m build
 python -m pip install dist/*.whl
-bat_img --input ./photos --recursive --resize 1920x0 --format webp --output ./out
+img_bat --input ./photos --recursive --resize 1920x0 --format webp --output ./out
 ```
 
 ## Make targets
@@ -60,7 +60,7 @@ make build-debug     # configure and build Debug
 make test            # build Debug and run CTest
 make build-release   # configure and build Release
 make wheel           # build a release PEP 517 wheel in dist/
-make wheel-check     # install the wheel in a temporary venv and run bat_img --help
+make wheel-check     # install the wheel in a temporary venv and run img_bat --help
 make clean           # remove build/ and dist/
 ```
 
@@ -73,7 +73,7 @@ to choose a value from 1 to 100 explicitly. Metadata-only HEIC operations
 preserve non-GPS EXIF/XMP but must currently re-encode the image because Exiv2
 cannot write BMFF/HEIC containers.
 The CTest suite performs an end-to-end JPEG → HEIC → PNG conversion when
-`BAT_IMG_ENABLE_HEIC` is enabled. Metadata tests also verify that `--strip-gps`
+`IMG_BAT_ENABLE_HEIC` is enabled. Metadata tests also verify that `--strip-gps`
 removes GPS tags while retaining other EXIF, and that `--strip-all` removes it all.
 
 ## Release matrix

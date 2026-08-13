@@ -3,7 +3,7 @@ requires = ["scikit-build-core>=0.10", "cmake>=3.21", "ninja; platform_system !=
 build-backend = "scikit_build_core.build"
 
 [project]
-name = "bat-img-cpp"
+name = "img-bat"
 version = "0.1.0"
 description = "Cross-platform C++ batch image processing CLI"
 readme = "README.md"
@@ -18,13 +18,13 @@ classifiers = [
 ]
 
 [project.scripts]
-bat_img = "bat_img_cpp:main"
+img_bat = "img_bat:main"
 
 [tool.scikit-build]
 cmake.build-type = "Release"
-wheel.packages = ["python/bat_img_cpp"]
+wheel.packages = ["python/img_bat"]
 install.components = ["default"]
 
 [tool.scikit-build.cmake.define]
-BAT_IMG_ENABLE_METADATA = "ON"
-BAT_IMG_ENABLE_HEIC = "ON"
+IMG_BAT_ENABLE_METADATA = "ON"
+IMG_BAT_ENABLE_HEIC = "ON"

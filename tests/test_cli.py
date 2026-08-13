@@ -108,7 +108,7 @@ def test_status(binary: str, directory: Path) -> None:
 def test_version(binary: str) -> None:
     for flag in ("-v", "--version"):
         result = run(binary, flag)
-        assert result.stdout.strip() == "bat_img 0.1.0", f"unexpected version output for {flag}"
+        assert result.stdout.strip() == "img_bat 0.1.0", f"unexpected version output for {flag}"
 
 
 def main() -> None:
