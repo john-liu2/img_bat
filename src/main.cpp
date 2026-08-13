@@ -28,6 +28,10 @@
 namespace fs = std::filesystem;
 struct Metadata;
 
+#ifndef BAT_IMG_VERSION
+#define BAT_IMG_VERSION "unknown"
+#endif
+
 struct Options {
   std::vector<fs::path> inputs;
   std::optional<fs::path> output;
@@ -192,6 +196,7 @@ static void usage() {
             << "  -f, --format FORMAT    heic, jpg, png, webp, tiff, bmp, gif\n"
             << "  -q, --quality N        JPEG/WebP quality (1-100; default 90)\n"
             << "  -t, --threads N        Worker threads (default: logical CPUs)\n"
+            << "  -v, --version          Show version and exit\n"
             << "      --rotate DEG        90, 180, or 270\n"
             << "      --flip-h|--flip-v   Mirror image horizontally or vertically\n"
             << "      --grayscale         Convert to grayscale\n"
@@ -234,6 +239,10 @@ static Options parse_args(int argc, char** argv) {
     else if (arg == "--strip-all") opt.strip_all = true;
     else if (arg == "--overwrite") opt.overwrite = true;
     else if (arg == "--quiet") opt.quiet = true;
+    else if (arg == "-v" || arg == "--version") {
+      std::cout << "bat_img " << BAT_IMG_VERSION << '\n';
+      std::exit(0);
+    }
     else if (arg == "-h" || arg == "--help") { usage(); std::exit(0); }
     else throw std::runtime_error("unknown option: " + arg);
   }

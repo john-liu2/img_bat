@@ -105,10 +105,16 @@ def test_status(binary: str, directory: Path) -> None:
     assert "elapsed:" in result.stdout, "elapsed time was not reported"
 
 
+def test_version(binary: str) -> None:
+    for flag in ("-v", "--version"):
+        result = run(binary, flag)
+        assert result.stdout.strip() == "bat_img 0.1.0", f"unexpected version output for {flag}"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
-    parser.add_argument("--mode", choices=("heic", "metadata", "status"), required=True)
+    parser.add_argument("--mode", choices=("heic", "metadata", "status", "version"), required=True)
     parser.add_argument("--exiv2")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as tmp:
@@ -118,8 +124,10 @@ def main() -> None:
         elif args.mode == "metadata":
             assert args.exiv2
             test_metadata(args.binary, args.exiv2, directory)
-        else:
+        elif args.mode == "status":
             test_status(args.binary, directory)
+        else:
+            test_version(args.binary)
 
 
 if __name__ == "__main__":

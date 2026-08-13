@@ -10,6 +10,7 @@ find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc)
 add_executable(bat_img src/main.cpp)
 target_compile_features(bat_img PRIVATE cxx_std_17)
 target_link_libraries(bat_img PRIVATE opencv_core opencv_imgcodecs opencv_imgproc)
+target_compile_definitions(bat_img PRIVATE BAT_IMG_VERSION="${PROJECT_VERSION}")
 
 if(MSVC)
   target_compile_options(bat_img PRIVATE /W4 /permissive-)
@@ -54,6 +55,8 @@ if(BUILD_TESTING)
            --binary $<TARGET_FILE:bat_img> --mode heic)
   add_test(NAME cli-status COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:bat_img> --mode status)
+  add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
+           --binary $<TARGET_FILE:bat_img> --mode version)
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
     if(EXIV2_EXECUTABLE)
