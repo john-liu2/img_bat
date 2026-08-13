@@ -13,7 +13,9 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <optional>
@@ -23,6 +25,7 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+struct Metadata;
 
 struct Options {
   std::vector<fs::path> inputs;
@@ -60,6 +63,9 @@ static bool is_image(const fs::path& path) {
 }
 
 #ifdef BAT_IMG_WITH_LIBHEIF
+static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
+                                const Metadata& metadata, bool strip_all, bool strip_gps);
+
 static void check_heif(heif_error error, const std::string& action) {
   if (error.code != heif_error_Ok) throw std::runtime_error(action + ": " + error.message);
 }
@@ -95,7 +101,8 @@ static cv::Mat read_heif(const fs::path& path) {
   }
 }
 
-static void write_heif(const fs::path& path, const cv::Mat& input, int quality) {
+static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
+                       const Metadata& metadata, bool strip_all, bool strip_gps) {
   cv::Mat bgr;
   if (input.depth() != CV_8U) input.convertTo(bgr, CV_8U);
   else bgr = input;
@@ -111,16 +118,42 @@ static void write_heif(const fs::path& path, const cv::Mat& input, int quality) 
   heif_image_handle* output_handle = nullptr;
   try {
     const bool alpha = rgb.channels() == 4;
-    const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
-    check_heif(heif_image_create(rgb.cols, rgb.rows, heif_colorspace_RGB, chroma, &image), "cannot create HEIC image");
-    check_heif(heif_image_add_plane(image, heif_channel_interleaved, rgb.cols, rgb.rows, 8), "cannot allocate HEIC pixels");
-    int stride = 0;
-    uint8_t* pixels = heif_image_get_plane(image, heif_channel_interleaved, &stride);
-    for (int row = 0; row < rgb.rows; ++row)
-      std::copy(rgb.ptr<uint8_t>(row), rgb.ptr<uint8_t>(row) + rgb.cols * rgb.elemSize(), pixels + row * stride);
+    if (alpha) {
+      check_heif(heif_image_create(rgb.cols, rgb.rows, heif_colorspace_RGB, heif_chroma_interleaved_RGBA, &image), "cannot create HEIC image");
+      check_heif(heif_image_add_plane(image, heif_channel_interleaved, rgb.cols, rgb.rows, 8), "cannot allocate HEIC pixels");
+      int stride = 0;
+      uint8_t* pixels = heif_image_get_plane(image, heif_channel_interleaved, &stride);
+      for (int row = 0; row < rgb.rows; ++row)
+        std::copy(rgb.ptr<uint8_t>(row), rgb.ptr<uint8_t>(row) + rgb.cols * rgb.elemSize(), pixels + row * stride);
+    } else {
+      // HEIC photos normally use YCbCr 4:2:0. Encoding interleaved RGB lets
+      // the codec choose 4:4:4, which substantially inflates photo files.
+      cv::Mat ycrcb;
+      cv::cvtColor(rgb, ycrcb, cv::COLOR_RGB2YCrCb);
+      std::vector<cv::Mat> channels;
+      cv::split(ycrcb, channels);
+      cv::Mat cb, cr;
+      const cv::Size chroma_size((rgb.cols + 1) / 2, (rgb.rows + 1) / 2);
+      cv::resize(channels[2], cb, chroma_size, 0, 0, cv::INTER_AREA);
+      cv::resize(channels[1], cr, chroma_size, 0, 0, cv::INTER_AREA);
+      check_heif(heif_image_create(rgb.cols, rgb.rows, heif_colorspace_YCbCr, heif_chroma_420, &image), "cannot create HEIC image");
+      check_heif(heif_image_add_plane(image, heif_channel_Y, rgb.cols, rgb.rows, 8), "cannot allocate HEIC luma");
+      check_heif(heif_image_add_plane(image, heif_channel_Cb, chroma_size.width, chroma_size.height, 8), "cannot allocate HEIC Cb");
+      check_heif(heif_image_add_plane(image, heif_channel_Cr, chroma_size.width, chroma_size.height, 8), "cannot allocate HEIC Cr");
+      const auto copy_plane = [&](const cv::Mat& source, heif_channel channel) {
+        int stride = 0;
+        uint8_t* pixels = heif_image_get_plane(image, channel, &stride);
+        for (int row = 0; row < source.rows; ++row)
+          std::copy(source.ptr<uint8_t>(row), source.ptr<uint8_t>(row) + source.cols, pixels + row * stride);
+      };
+      copy_plane(channels[0], heif_channel_Y);
+      copy_plane(cb, heif_channel_Cb);
+      copy_plane(cr, heif_channel_Cr);
+    }
     check_heif(heif_context_get_encoder_for_format(context, heif_compression_HEVC, &encoder), "HEIC encoder unavailable");
     check_heif(heif_encoder_set_lossy_quality(encoder, quality), "cannot set HEIC quality");
     check_heif(heif_context_encode_image(context, image, encoder, nullptr, &output_handle), "cannot encode HEIC");
+    write_heif_metadata(context, output_handle, metadata, strip_all, strip_gps);
     check_heif(heif_context_write_to_file(context, path.string().c_str()), "cannot write HEIC");
     heif_image_handle_release(output_handle);
     heif_encoder_release(encoder);
@@ -236,9 +269,70 @@ struct Metadata {
 #endif
 };
 
+#ifdef BAT_IMG_WITH_LIBHEIF
+static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
+                                const Metadata& metadata, bool strip_all, bool strip_gps) {
+#ifdef BAT_IMG_WITH_EXIV2
+  if (strip_all) return;
+  Exiv2::ExifData exif = metadata.exif;
+  if (strip_gps) {
+    for (auto it = exif.begin(); it != exif.end();) {
+      if (it->groupName().find("GPS") != std::string::npos) it = exif.erase(it); else ++it;
+    }
+  }
+  if (!exif.empty()) {
+    Exiv2::Blob encoded_exif;
+    Exiv2::ExifParser::encode(encoded_exif, Exiv2::littleEndian, exif);
+    if (!encoded_exif.empty())
+      check_heif(heif_context_add_exif_metadata(context, handle, encoded_exif.data(), static_cast<int>(encoded_exif.size())),
+                 "cannot preserve HEIC EXIF metadata");
+  }
+  if (!metadata.xmp.empty()) {
+    std::string encoded_xmp;
+    if (Exiv2::XmpParser::encode(encoded_xmp, metadata.xmp) == 0 && !encoded_xmp.empty())
+      check_heif(heif_context_add_XMP_metadata(context, handle, encoded_xmp.data(), static_cast<int>(encoded_xmp.size())),
+                 "cannot preserve HEIC XMP metadata");
+  }
+#else
+  (void)context; (void)handle; (void)metadata; (void)strip_all; (void)strip_gps;
+#endif
+}
+#endif
+
+#ifdef BAT_IMG_WITH_EXIV2
+// Exiv2's XMP toolkit has process-wide state.  It must be initialized before
+// worker threads start, and metadata I/O must not run concurrently.
+static std::mutex metadata_mutex;
+static std::mutex xmp_namespace_mutex;
+
+static void lock_xmp_namespaces(void*, bool lock) {
+  if (lock) xmp_namespace_mutex.lock(); else xmp_namespace_mutex.unlock();
+}
+
+class XmpRuntime {
+ public:
+  explicit XmpRuntime(bool enabled) : enabled_(enabled) {
+    if (enabled_ && !Exiv2::XmpParser::initialize(lock_xmp_namespaces, nullptr))
+      throw std::runtime_error("cannot initialize the Exiv2 XMP toolkit");
+  }
+  ~XmpRuntime() {
+    if (enabled_) Exiv2::XmpParser::terminate();
+  }
+
+ private:
+  bool enabled_;
+};
+#else
+class XmpRuntime {
+ public:
+  explicit XmpRuntime(bool) {}
+};
+#endif
+
 static Metadata read_metadata(const fs::path& path) {
   Metadata metadata;
 #ifdef BAT_IMG_WITH_EXIV2
+  std::lock_guard<std::mutex> lock(metadata_mutex);
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) return metadata;
   image->readMetadata();
@@ -253,14 +347,40 @@ static Metadata read_metadata(const fs::path& path) {
 
 static void restore_and_strip_metadata(const fs::path& path, const Metadata& metadata, bool strip_all, bool strip_gps) {
 #ifdef BAT_IMG_WITH_EXIV2
+  std::lock_guard<std::mutex> lock(metadata_mutex);
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) throw std::runtime_error("cannot open metadata: " + path.string());
-  image->readMetadata();
-  if (!strip_all) {
-    image->setExifData(metadata.exif);
+  if (strip_all) {
+    image->clearExifData(); image->clearIptcData(); image->clearXmpData();
+  } else {
+    // Restore the captured metadata explicitly because OpenCV drops it while
+    // encoding.  Remove GPS from the copy before attaching it to the output;
+    // mutating image->exifData() after setExifData() can discard all tags in
+    // some Exiv2 image backends.
+    Exiv2::ExifData exif = metadata.exif;
+    if (strip_gps) {
+      for (auto it = exif.begin(); it != exif.end();) {
+        if (it->groupName().find("GPS") != std::string::npos) it = exif.erase(it); else ++it;
+      }
+    }
+    image->setExifData(exif);
     image->setIptcData(metadata.iptc);
     image->setXmpData(metadata.xmp);
   }
+  image->writeMetadata();
+#else
+  (void)path; (void)metadata;
+  if (strip_all || strip_gps)
+    throw std::runtime_error("metadata support was not built; install Exiv2 and rebuild");
+#endif
+}
+
+static void strip_metadata_in_place(const fs::path& path, bool strip_all, bool strip_gps) {
+#ifdef BAT_IMG_WITH_EXIV2
+  std::lock_guard<std::mutex> lock(metadata_mutex);
+  auto image = Exiv2::ImageFactory::open(path.string());
+  if (!image.get()) throw std::runtime_error("cannot open metadata: " + path.string());
+  image->readMetadata();
   if (strip_all) {
     image->clearExifData(); image->clearIptcData(); image->clearXmpData();
   } else if (strip_gps) {
@@ -271,9 +391,8 @@ static void restore_and_strip_metadata(const fs::path& path, const Metadata& met
   }
   image->writeMetadata();
 #else
-  (void)path; (void)metadata;
-  if (strip_all || strip_gps)
-    throw std::runtime_error("metadata support was not built; install Exiv2 and rebuild");
+  (void)path; (void)strip_all; (void)strip_gps;
+  throw std::runtime_error("metadata support was not built; install Exiv2 and rebuild");
 #endif
 }
 
@@ -289,6 +408,14 @@ static void process_one(const fs::path& input, const Options& opt) {
   const fs::path output = output_path(input, opt);
   if (!opt.overwrite && output != input && fs::exists(output)) return;
   if (output.has_parent_path()) fs::create_directories(output.parent_path());
+
+  const bool image_transform_requested = opt.format || opt.resize || opt.grayscale || opt.flip_h || opt.flip_v ||
+                                       opt.rotate != 0 || opt.border != 0 || opt.brightness != 0.0 || opt.contrast != 1.0;
+  const bool is_heif = lower(input.extension().string()) == ".heic" || lower(input.extension().string()) == ".heif";
+  if (output == input && !is_heif && !image_transform_requested && (opt.strip_all || opt.strip_gps)) {
+    strip_metadata_in_place(input, opt.strip_all, opt.strip_gps);
+    return;
+  }
 
   // OpenCV/libheif encoders do not copy metadata.  Only load it when a
   // stripping operation needs to distinguish GPS from other EXIF tags.
@@ -327,22 +454,33 @@ static void process_one(const fs::path& input, const Options& opt) {
   if (ext == ".webp") params = {cv::IMWRITE_WEBP_QUALITY, opt.quality};
   if (ext == ".heic" || ext == ".heif") {
 #ifdef BAT_IMG_WITH_LIBHEIF
-    write_heif(output, image, opt.quality);
+    write_heif(output, image, opt.quality, metadata, opt.strip_all, opt.strip_gps);
 #else
     throw std::runtime_error("HEIC support was not built; install libheif and rebuild");
 #endif
   } else if (!cv::imwrite(output.string(), image, params)) {
     throw std::runtime_error("cannot write " + output.string());
   }
-  // libheif output is metadata-free, and Exiv2 cannot write metadata to all
-  // BMFF/HEIC variants.  There is therefore nothing to strip in that case.
+  // HEIC metadata is attached through libheif, because Exiv2 cannot write
+  // BMFF images. Other formats use Exiv2 after OpenCV encoding.
   if ((opt.strip_all || opt.strip_gps) && ext != ".heic" && ext != ".heif")
     restore_and_strip_metadata(output, metadata, opt.strip_all, opt.strip_gps);
+}
+
+static void print_progress(size_t completed, size_t total) {
+  constexpr size_t bar_width = 30;
+  const size_t filled = total == 0 ? 0 : completed * bar_width / total;
+  const size_t percent = total == 0 ? 100 : completed * 100 / total;
+  std::cout << "\rProgress [" << std::string(filled, '#')
+            << std::string(bar_width - filled, '-') << "] "
+            << completed << '/' << total << " (" << percent << "%)" << std::flush;
 }
 
 int main(int argc, char** argv) {
   try {
     const Options opt = parse_args(argc, argv);
+    XmpRuntime xmp_runtime(opt.strip_all || opt.strip_gps);
+    const auto started = std::chrono::steady_clock::now();
     const auto files = collect_files(opt);
     if (files.empty()) throw std::runtime_error("no input images found");
     // Parallelize across files.  Keep OpenCV single-threaded per worker to
@@ -350,7 +488,14 @@ int main(int argc, char** argv) {
     cv::setNumThreads(1);
     std::atomic_size_t next_file{0};
     std::atomic_uint succeeded{0};
+    std::atomic_size_t completed{0};
     std::mutex output_mutex;
+    const size_t worker_count = std::min(files.size(), static_cast<size_t>(opt.threads));
+    if (!opt.quiet) {
+      std::cout << "Processing " << files.size() << " image" << (files.size() == 1 ? "" : "s")
+                << " using " << worker_count << " worker " << (worker_count == 1 ? "thread" : "threads") << "\n";
+      print_progress(0, files.size());
+    }
     const auto worker = [&] {
       while (true) {
         const size_t index = next_file.fetch_add(1);
@@ -359,22 +504,28 @@ int main(int argc, char** argv) {
         try {
           process_one(file, opt);
           ++succeeded;
+        } catch (const std::exception& error) {
           if (!opt.quiet) {
             std::lock_guard<std::mutex> lock(output_mutex);
-            std::cout << "Processed " << file << '\n';
+            std::cerr << "\rError: " << file << ": " << error.what() << '\n';
           }
-        } catch (const std::exception& error) {
+        }
+        const size_t done = ++completed;
+        if (!opt.quiet) {
           std::lock_guard<std::mutex> lock(output_mutex);
-          std::cerr << "Error: " << file << ": " << error.what() << '\n';
+          print_progress(done, files.size());
         }
       }
     };
-    const size_t worker_count = std::min(files.size(), static_cast<size_t>(opt.threads));
     std::vector<std::thread> workers;
     workers.reserve(worker_count);
     for (size_t i = 0; i < worker_count; ++i) workers.emplace_back(worker);
     for (auto& worker_thread : workers) worker_thread.join();
-    if (!opt.quiet) std::cout << "Done: " << succeeded << '/' << files.size() << " succeeded\n";
+    if (!opt.quiet) {
+      const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+      std::cout << "\nDone: " << succeeded << '/' << files.size() << " succeeded"
+                << " (elapsed: " << std::fixed << std::setprecision(2) << elapsed << " s)\n";
+    }
     return succeeded == files.size() ? 0 : 1;
   } catch (const std::exception& error) {
     std::cerr << "Error: " << error.what() << "\nUse --help for usage.\n";
