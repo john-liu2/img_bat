@@ -2,11 +2,11 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
 #include <exiv2/exiv2.hpp>
 #endif
 
-#ifdef BAT_IMG_WITH_LIBHEIF
+#ifdef IMG_BAT_WITH_LIBHEIF
 #include <libheif/heif.h>
 #endif
 
@@ -28,8 +28,8 @@
 namespace fs = std::filesystem;
 struct Metadata;
 
-#ifndef BAT_IMG_VERSION
-#define BAT_IMG_VERSION "unknown"
+#ifndef IMG_BAT_VERSION
+#define IMG_BAT_VERSION "unknown"
 #endif
 
 struct Options {
@@ -68,7 +68,7 @@ static bool is_image(const fs::path& path) {
          ext == ".heic" || ext == ".heif";
 }
 
-#ifdef BAT_IMG_WITH_LIBHEIF
+#ifdef IMG_BAT_WITH_LIBHEIF
 static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
                                 const Metadata& metadata, bool strip_all, bool strip_gps);
 
@@ -187,8 +187,8 @@ static std::pair<int, int> parse_resize(const std::string& spec) {
 }
 
 static void usage() {
-  std::cout << "bat_img - cross-platform batch image processor\n\n"
-            << "Usage: bat_img -i PATH [-i PATH ...] [options]\n\n"
+  std::cout << "img_bat - cross-platform C++ batch image processor\n\n"
+            << "Usage: img_bat -i PATH [-i PATH ...] [options]\n\n"
             << "Options:\n"
             << "  -i, --input PATH       Input file or directory (repeatable)\n"
             << "  -o, --output DIR       Output directory; omit for in-place processing\n"
@@ -240,7 +240,7 @@ static Options parse_args(int argc, char** argv) {
     else if (arg == "--overwrite") opt.overwrite = true;
     else if (arg == "--quiet") opt.quiet = true;
     else if (arg == "-v" || arg == "--version") {
-      std::cout << "bat_img " << BAT_IMG_VERSION << '\n';
+      std::cout << "img_bat " << IMG_BAT_VERSION << '\n';
       std::exit(0);
     }
     else if (arg == "-h" || arg == "--help") { usage(); std::exit(0); }
@@ -276,17 +276,17 @@ static std::vector<fs::path> collect_files(const Options& opt) {
 }
 
 struct Metadata {
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
   Exiv2::ExifData exif;
   Exiv2::IptcData iptc;
   Exiv2::XmpData xmp;
 #endif
 };
 
-#ifdef BAT_IMG_WITH_LIBHEIF
+#ifdef IMG_BAT_WITH_LIBHEIF
 static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
                                 const Metadata& metadata, bool strip_all, bool strip_gps) {
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
   if (strip_all) return;
   Exiv2::ExifData exif = metadata.exif;
   if (strip_gps) {
@@ -313,7 +313,7 @@ static void write_heif_metadata(heif_context* context, const heif_image_handle* 
 }
 #endif
 
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
 // Exiv2's XMP toolkit has process-wide state.  It must be initialized before
 // worker threads start, and metadata I/O must not run concurrently.
 static std::mutex metadata_mutex;
@@ -345,7 +345,7 @@ class XmpRuntime {
 
 static Metadata read_metadata(const fs::path& path) {
   Metadata metadata;
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
   std::lock_guard<std::mutex> lock(metadata_mutex);
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) return metadata;
@@ -360,7 +360,7 @@ static Metadata read_metadata(const fs::path& path) {
 }
 
 static void restore_and_strip_metadata(const fs::path& path, const Metadata& metadata, bool strip_all, bool strip_gps) {
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
   std::lock_guard<std::mutex> lock(metadata_mutex);
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) throw std::runtime_error("cannot open metadata: " + path.string());
@@ -390,7 +390,7 @@ static void restore_and_strip_metadata(const fs::path& path, const Metadata& met
 }
 
 static void strip_metadata_in_place(const fs::path& path, bool strip_all, bool strip_gps) {
-#ifdef BAT_IMG_WITH_EXIV2
+#ifdef IMG_BAT_WITH_EXIV2
   std::lock_guard<std::mutex> lock(metadata_mutex);
   auto image = Exiv2::ImageFactory::open(path.string());
   if (!image.get()) throw std::runtime_error("cannot open metadata: " + path.string());
@@ -410,7 +410,7 @@ static void strip_metadata_in_place(const fs::path& path, bool strip_all, bool s
 #endif
 }
 
-#if defined(BAT_IMG_WITH_EXIV2) && defined(BAT_IMG_WITH_LIBHEIF)
+#if defined(IMG_BAT_WITH_EXIV2) && defined(IMG_BAT_WITH_LIBHEIF)
 static uint64_t read_be(const std::vector<uint8_t>& data, size_t offset, size_t width) {
   if (width > 8 || offset + width > data.size()) throw std::runtime_error("invalid BMFF metadata box");
   uint64_t value = 0;
@@ -530,7 +530,7 @@ static bool strip_gps_heif_losslessly(const fs::path& path) {
   std::copy(replacement.begin(), replacement.end(), data.begin() + exif_data_offset);
   write_be(data, exif_length_offset, length_size, replacement.size());
 
-  const fs::path temporary = path.string() + ".bat-img-tmp";
+  const fs::path temporary = path.string() + ".img-bat-tmp";
   { std::ofstream output(temporary, std::ios::binary | std::ios::trunc); output.write(reinterpret_cast<const char*>(data.data()), data.size()); }
   fs::rename(temporary, path);
   return true;
@@ -554,7 +554,7 @@ static void process_one(const fs::path& input, const Options& opt) {
                                        opt.rotate != 0 || opt.border != 0 || opt.brightness != 0.0 || opt.contrast != 1.0;
   const bool is_heif = lower(input.extension().string()) == ".heic" || lower(input.extension().string()) == ".heif";
   if (output == input && is_heif && !image_transform_requested && opt.strip_gps && !opt.strip_all) {
-#if defined(BAT_IMG_WITH_EXIV2) && defined(BAT_IMG_WITH_LIBHEIF)
+#if defined(IMG_BAT_WITH_EXIV2) && defined(IMG_BAT_WITH_LIBHEIF)
     if (strip_gps_heif_losslessly(input)) return;
 #endif
   }
@@ -570,7 +570,7 @@ static void process_one(const fs::path& input, const Options& opt) {
   const auto input_ext = lower(input.extension().string());
   cv::Mat image;
   if (input_ext == ".heic" || input_ext == ".heif") {
-#ifdef BAT_IMG_WITH_LIBHEIF
+#ifdef IMG_BAT_WITH_LIBHEIF
     image = read_heif(input);
 #else
     throw std::runtime_error("HEIC support was not built; install libheif and rebuild");
@@ -600,7 +600,7 @@ static void process_one(const fs::path& input, const Options& opt) {
   if (ext == ".jpg" || ext == ".jpeg") params = {cv::IMWRITE_JPEG_QUALITY, opt.quality};
   if (ext == ".webp") params = {cv::IMWRITE_WEBP_QUALITY, opt.quality};
   if (ext == ".heic" || ext == ".heif") {
-#ifdef BAT_IMG_WITH_LIBHEIF
+#ifdef IMG_BAT_WITH_LIBHEIF
     // HEIC encoders interpret quality differently from JPEG. A quality of 50
     // is a typical photographic HEIC setting; retain an explicit -q override.
     const int heic_quality = opt.quality_specified ? opt.quality : 50;
