@@ -6,7 +6,7 @@ encoding, and uses Exiv2 to remove metadata.
 
 ## Supported platforms
 
-- macOS (Apple Silicon and Intel)
+- macOS (Apple Silicon)
 - Linux (x86_64 and ARM64)
 - Windows (x86_64)
 
@@ -19,6 +19,7 @@ the `bat_img` console-script launcher.
 - CMake 3.21+
 - C++17 compiler
 - OpenCV development files, including `core`, `imgcodecs`, and `imgproc`
+- libheif development files for HEIC input and output
 - Python 3.9+
 - Exiv2 development files for `--strip-gps` and `--strip-all`
 
@@ -26,13 +27,13 @@ Typical dependencies:
 
 ```bash
 # macOS
-brew install cmake opencv exiv2
+brew install cmake opencv exiv2 libheif
 
 # Ubuntu/Debian
-sudo apt install cmake g++ libopencv-dev libexiv2-dev
+sudo apt install cmake g++ libopencv-dev libexiv2-dev libheif-dev
 
 # Windows (vcpkg)
-vcpkg install opencv4 exiv2
+vcpkg install opencv4 exiv2 libheif
 ```
 
 ## Build and run locally
@@ -52,13 +53,28 @@ python -m pip install dist/*.whl
 bat_img --input ./photos --recursive --resize 1920x0 --format webp --output ./out
 ```
 
+## Make targets
+
+```bash
+make build-debug     # configure and build Debug
+make test            # build Debug and run CTest
+make build-release   # configure and build Release
+make wheel           # build a release PEP 517 wheel in dist/
+make wheel-check     # install the wheel in a temporary venv and run bat_img --help
+make clean           # remove build/ and dist/
+```
+
 ## HEIC
 
-HEIC is deliberately dependent on the OpenCV build's installed codec backend.
-It is not guaranteed by the base wheel. For portable HEIC wheels, build OpenCV
-with libheif support and bundle the resulting dynamic libraries in each target
-wheel. The base tool reports a normal decode error if its OpenCV build cannot
-decode a HEIC image.
+HEIC and HEIF input/output use libheif directly, independent of OpenCV's codec
+plugins. libheif needs an HEVC encoder (for example x265) to write `.heic`.
+The default HEIC quality is 50 (a photo-oriented setting); pass `--quality N`
+to choose a value from 1 to 100 explicitly. Metadata-only HEIC operations
+preserve non-GPS EXIF/XMP but must currently re-encode the image because Exiv2
+cannot write BMFF/HEIC containers.
+The CTest suite performs an end-to-end JPEG → HEIC → PNG conversion when
+`BAT_IMG_ENABLE_HEIC` is enabled. Metadata tests also verify that `--strip-gps`
+removes GPS tags while retaining other EXIF, and that `--strip-all` removes it all.
 
 ## Release matrix
 
