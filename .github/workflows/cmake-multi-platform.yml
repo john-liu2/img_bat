@@ -9,19 +9,24 @@ on:
 
 jobs:
   build:
+    name: Build (${{ matrix.name }})
+
     strategy:
       # Should set to true if you want to stop the build on the first failure
       fail-fast: false
       matrix:
         build-type: [Release]
         include:
-          - os: macos-latest
+          - name: macOS
+            os: macos-latest
             compiler: clang++
 
-          - os: ubuntu-latest
+          - name: Linux
+            os: ubuntu-latest
             compiler: g++
 
-          - os: windows-latest
+          - name: Windows
+            os: windows-latest
             compiler: msvc
 
     runs-on: ${{ matrix.os }}
@@ -113,12 +118,12 @@ jobs:
             -S "${{ github.workspace }}" `
             -B "${{ github.workspace }}/build" `
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} `
+            -G "Visual Studio 18 2026" `
+            -A x64 `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_CXX_STANDARD=17 `
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
-            -DCMAKE_CXX_EXTENSIONS=OFF `
-            -G "Visual Studio 18 2026" `
-            -A x64 `
+            -DCMAKE_CXX_EXTENSIONS=OFF
 
 
       - name: Build
