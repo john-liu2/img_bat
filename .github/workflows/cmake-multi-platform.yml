@@ -135,12 +135,10 @@ jobs:
 
 
       - name: Build
-        run: |
-          cmake --build "${{ github.workspace }}/build" `
-            --config ${{ matrix.build-type }} `
-            --parallel
+      # Cross-platform: use a single-line cmake command
+        run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
-        run: |
-          ctest --build-config ${{ matrix.build-type }} --output-on-failure
+        # Cross-platform: use a single-line ctest command
+        run: ctest --build-config ${{ matrix.build-type }} --output-on-failure
