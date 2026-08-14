@@ -114,19 +114,35 @@ jobs:
         run: |
           $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
 
-          Write-Host "Using vcpkg: $vcpkg"
-
-          if (-not (Test-Path $vcpkg)) {
-            throw "vcpkg was not found"
-          }
-
           & $vcpkg version
-
           & $vcpkg install `
             opencv `
             libheif `
             exiv2 `
             --triplet x64-windows
+
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+          & $vcpkg list | Select-String "opencv|libheif|exiv2"
+
+      - name: Diagnose vcpkg - Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
+
+          & $vcpkg list | Select-String "libheif|opencv|exiv2"
+
+          Write-Host "`nlibheif files:"
+          Get-ChildItem `
+            "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Where-Object {
+              $_.Name -match "libheif|heif.*cmake"
+            } |
+            Select-Object FullName
 
       - name: Configure CMake - Windows
         if: runner.os == 'Windows'
@@ -139,6 +155,8 @@ jobs:
             -G "Visual Studio 18 2026" `
             -A x64 `
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DVCPKG_TARGET_TRIPLET=x64-windows `
+            -DCMAKE_PREFIX_PATH="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" `
             -DCMAKE_CXX_STANDARD=17 `
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
             -DCMAKE_CXX_EXTENSIONS=OFF
