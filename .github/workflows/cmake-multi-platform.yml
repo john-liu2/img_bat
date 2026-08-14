@@ -9,31 +9,33 @@ on:
 
 jobs:
   build:
-    name: Build (${{ matrix.name }})
+    name: Build (${{ matrix.os }}, ${{ matrix.build-type }})
 
     strategy:
       # Should set to true if you want to stop the build on the first failure
       fail-fast: false
+      max-parallel: 3
       matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
         build-type: [Release]
-        include:
-          - name: macOS
-            os: macos-latest
-            compiler: clang++
-
-          - name: Linux
-            os: ubuntu-latest
-            compiler: g++
-
-          - name: Windows
-            os: windows-latest
-            compiler: msvc
 
     runs-on: ${{ matrix.os }}
 
     steps:
+      - name: Show matrix
+        shell: bash
+        run: |
+          echo "matrix.os = ${{ matrix.os }}"
+          echo "runner.os = $RUNNER_OS"
+
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Show runner
+        shell: bash
+        run: |
+          echo "OS: $RUNNER_OS"
+          echo "Runner: $RUNNER_NAME"
 
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
@@ -58,11 +60,17 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            CXX=clang++
+          else
+            CXX=g++
+          fi
+
           cmake \
             -S "${{ github.workspace }}" \
             -B "${{ github.workspace }}/build" \
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
-            -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} \
+            -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_STANDARD=17 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF
