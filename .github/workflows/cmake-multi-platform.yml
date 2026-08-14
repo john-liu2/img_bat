@@ -53,8 +53,41 @@ jobs:
             libopencv-dev \
             libheif-dev \
             libexiv2-dev \
+            libx265-dev \
+            x265 \
             pkg-config \
             python3
+
+          echo "=== libheif ==="
+          dpkg -l | grep libheif || true
+
+          echo "=== HEIF encoder ==="
+          command -v heif-enc || true
+
+          echo "=== heif-enc version ==="
+          heif-enc --version || true
+
+          echo "=== x265 ==="
+          x265 --version || true
+
+          echo "=== libheif codecs ==="
+          heif-enc --list-encoders || true
+
+      - name: Test libheif independently - Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -x
+
+          heif-enc --version
+          heif-enc --list-encoders
+
+          heif-enc \
+            "${GITHUB_WORKSPACE}/tests/fixtures/source.jpg" \
+            -o /tmp/test.heic \
+            --verbose
+
+          heif-info /tmp/test.heic
 
       - name: Configure CMake - macOS/Linux
         if: runner.os != 'Windows'
