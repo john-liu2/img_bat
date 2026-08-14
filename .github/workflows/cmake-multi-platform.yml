@@ -62,23 +62,28 @@ jobs:
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF
 
-      - name: Diagnose Windows
+      - name: Diagnose Visual Studio
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "Runner: $env:RUNNER_OS"
-          Write-Host "Image: $env:ImageVersion"
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-          cmake --version
+          Write-Host "vswhere: $vswhere"
 
-          Write-Host "`nVisual Studio installations:"
-          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue
+          & $vswhere `
+            -latest `
+            -products * `
+            -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+            -property installationPath
 
-          Write-Host "`nCMake generators:"
-          cmake --help | Select-String "Visual Studio"
+          Write-Host "`nC++ compiler files:"
 
-          Write-Host "`nMSVC compiler:"
-          where.exe cl 2>$null
+          Get-ChildItem `
+            "C:\Program Files\Microsoft Visual Studio\18" `
+            -Filter cl.exe `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty FullName
 
       - name: Install dependencies - Windows
         if: runner.os == 'Windows'
@@ -112,6 +117,9 @@ jobs:
             -DCMAKE_CXX_STANDARD=17 `
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
             -DCMAKE_CXX_EXTENSIONS=OFF `
+            -G "Visual Studio 18 2026" `
+            -A x64 `
+
 
       - name: Build
         run: |
