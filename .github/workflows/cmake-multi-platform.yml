@@ -30,8 +30,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install dependencies - macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew update
+          brew install opencv libheif exiv2
+
+      - name: Install dependencies - Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libopencv-dev \
+            libheif-dev \
+            libexiv2-dev \
+            pkg-config \
+            python3
+
+      - name: Install dependencies - Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install opencv --yes
+          choco install vcpkg --yes
+
       - name: Configure CMake - macOS/Linux
-        if: matrix.compiler != 'msvc'
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           cmake \
@@ -43,19 +69,36 @@ jobs:
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
             -DCMAKE_CXX_EXTENSIONS=OFF
 
+      - name: Diagnose Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "Runner: $env:RUNNER_OS"
+          Write-Host "Image: $env:ImageVersion"
+
+          cmake --version
+
+          Write-Host "`nVisual Studio installations:"
+          Get-ChildItem "C:\Program Files\Microsoft Visual Studio" -ErrorAction SilentlyContinue
+
+          Write-Host "`nCMake generators:"
+          cmake --help | Select-String "Visual Studio"
+
+          Write-Host "`nMSVC compiler:"
+          where.exe cl 2>$null
+
       - name: Configure CMake - Windows
-        if: matrix.compiler == 'msvc'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cmake `
             -S "${{ github.workspace }}" `
             -B "${{ github.workspace }}/build" `
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_CXX_STANDARD=17 `
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
             -DCMAKE_CXX_EXTENSIONS=OFF `
-            -G "Visual Studio 17 2022" `
-            -A x64
 
       - name: Build
         run: |
