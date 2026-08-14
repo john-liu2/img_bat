@@ -55,6 +55,7 @@ jobs:
             libexiv2-dev \
             libheif-examples \
             libheif-plugin-x265 \
+            libheif-plugin-libde265 \
             pkg-config \
             python3
 
