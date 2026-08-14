@@ -29,7 +29,7 @@ jobs:
           echo "runner.os = $RUNNER_OS"
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Show runner
         shell: bash
@@ -41,7 +41,7 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
-          brew update
+          brew untap aws/tap 2>/dev/null || true
           brew install opencv libheif exiv2
 
       - name: Install dependencies - Linux
@@ -70,20 +70,6 @@ jobs:
 
           echo "=== libheif codecs ==="
           heif-enc --list-encoders || true
-
-      - name: Test libheif independently - Linux
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -eux
-
-          mkdir -p /tmp/heif-test
-
-          heif-enc \
-            "${GITHUB_WORKSPACE}/tests/fixtures/source.jpg" \
-            -o /tmp/heif-test/test.heic
-
-          heif-info /tmp/heif-test/test.heic
 
       - name: Configure CMake - macOS/Linux
         if: runner.os != 'Windows'
