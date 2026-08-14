@@ -144,6 +144,19 @@ jobs:
             } |
             Select-Object FullName
 
+      - name: Inspect libheif CMake package - Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $config = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif\libheif-config.cmake"
+
+          Write-Host "=== libheif config ==="
+          Get-Content $config
+
+          Write-Host "`n=== libheif config files ==="
+          Get-ChildItem `
+            "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif"
+
       - name: Configure CMake - Windows
         if: runner.os == 'Windows'
         shell: pwsh
