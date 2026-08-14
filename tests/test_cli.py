@@ -4,19 +4,14 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 
-# A tiny valid RGB JPEG; keeping the fixture inline makes the test self-contained.
-JPEG = (
-    b"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////"
-    b"2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/"
-    b"xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z"
-)
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+JPEG_FIXTURE = FIXTURE_DIR / "source.jpg"
 
 
 def run(*command: str) -> subprocess.CompletedProcess[str]:
@@ -31,26 +26,65 @@ def run(*command: str) -> subprocess.CompletedProcess[str]:
 
 def write_jpeg(directory: Path) -> Path:
     source = directory / "source.jpg"
-    source.write_bytes(base64.b64decode(JPEG))
+    shutil.copyfile(JPEG_FIXTURE, source)
     return source
 
 
 def test_heic(binary: str, directory: Path) -> None:
     source = write_jpeg(directory)
-    heic_dir, png_dir = directory / "heic", directory / "png"
-    run(binary, "--input", str(source), "--format", "heic", "--output", str(heic_dir), "--quiet")
-    heic = heic_dir / "source.heic"
-    assert heic.exists() and heic.stat().st_size > 0, "HEIC output was not created"
-    details = run("heif-info", str(heic)).stdout
-    assert "YCbCr, 4:2:0" in details, "HEIC output did not use 4:2:0 chroma"
-    run(binary, "--input", str(heic), "--format", "png", "--output", str(png_dir), "--quiet")
-    assert (png_dir / "source.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n"), "HEIC input did not decode to PNG"
+    heic_dir = directory / "heic"
+    png_dir = directory / "png"
 
-    # An explicit quality value remains available when the default photo
-    # setting is not appropriate for a particular workflow.
+    run(
+        binary,
+        "--input",
+        str(source),
+        "--format",
+        "heic",
+        "--output",
+        str(heic_dir),
+        "--quiet",
+    )
+    heic = heic_dir / "source.heic"
+    assert heic.exists() and heic.stat().st_size > 0, (
+        "HEIC output was not created"
+    )
+
+    details = run("heif-info", str(heic)).stdout
+    assert "YCbCr, 4:2:0" in details, (
+        "HEIC output did not use 4:2:0 chroma"
+    )
+
+    run(
+        binary,
+        "--input",
+        str(heic),
+        "--format",
+        "png",
+        "--output",
+        str(png_dir),
+        "--quiet",
+    )
+    assert (png_dir / "source.png").read_bytes().startswith(
+        b"\x89PNG\r\n\x1a\n"
+    ), "HEIC input did not decode to PNG"
+
     quality_dir = directory / "quality"
-    run(binary, "--input", str(source), "--format", "heic", "--quality", "80", "--output", str(quality_dir), "--quiet")
-    assert (quality_dir / "source.heic").exists(), "explicit HEIC quality did not produce output"
+    run(
+        binary,
+        "--input",
+        str(source),
+        "--format",
+        "heic",
+        "--quality",
+        "80",
+        "--output",
+        str(quality_dir),
+        "--quiet",
+    )
+    assert (quality_dir / "source.heic").exists(), (
+        "explicit HEIC quality did not produce output"
+    )
 
 
 def metadata_keys(exiv2: str, path: Path) -> str:

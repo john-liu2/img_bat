@@ -11,6 +11,7 @@ RELEASE_BUILD := build/release
 DIST_DIR := dist
 PY_CACHE := python/img_bat/__pycache__
 BIN_NAME := bat_img
+TEST_CACHE := tests/__pycache__
 
 .DEFAULT_GOAL := help
 .PHONY: help clean build-debug test build-release wheel wheel-check
@@ -25,7 +26,7 @@ help:
 	  'make check    Build, install, and smoke-test the wheel in a temporary venv'
 
 clean:
-	$(CMAKE) -E rm -rf build $(DIST_DIR) $(PY_CACHE)
+	$(CMAKE) -E rm -rf build $(DIST_DIR) $(PY_CACHE) $(TEST_CACHE)
 
 debug:
 	$(CMAKE) -S . -B $(DEBUG_BUILD) -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
