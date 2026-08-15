@@ -38,15 +38,29 @@ endif()
 
 if(IMG_BAT_ENABLE_HEIC)
   find_package(libheif CONFIG QUIET)
-  if(TARGET libheif::libheif)
+
+  if(TARGET heif)
+    message(STATUS "Using libheif target: heif")
+    target_link_libraries(img_bat PRIVATE heif)
+
+  elseif(TARGET libheif::libheif)
+    message(STATUS "Using libheif target: libheif::libheif")
     target_link_libraries(img_bat PRIVATE libheif::libheif)
-  else()
+
+  elseif(UNIX)
+    message(STATUS "Using libheif via pkg-config")
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(LIBHEIF REQUIRED IMPORTED_TARGET libheif)
     target_link_libraries(img_bat PRIVATE PkgConfig::LIBHEIF)
+
+  else()
+    message(FATAL_ERROR "libheif not found")
   endif()
+
   target_compile_definitions(img_bat PRIVATE IMG_BAT_WITH_LIBHEIF=1)
 endif()
+
+
 
 include(CTest)
 if(BUILD_TESTING)
