@@ -132,46 +132,70 @@ static cv::Mat read_heif(const fs::path& path) {
 static void print_heif_info(const fs::path& path) {
   heif_context* context = heif_context_alloc();
   heif_image_handle* handle = nullptr;
-  heif_image* decoded = nullptr;
-  try {
-    check_heif(heif_context_read_from_file(context, path.string().c_str(), nullptr), "cannot read HEIC");
-    check_heif(heif_context_get_primary_image_handle(context, &handle), "cannot open HEIC image handle");
 
-    int width = heif_image_handle_get_width(handle);
-    int height = heif_image_handle_get_height(handle);
-    bool has_alpha = heif_image_handle_has_alpha_channel(handle) != 0;
-    int bit_depth = heif_image_handle_get_luma_bits_per_pixel(handle);
+  try {
+    check_heif(
+        heif_context_read_from_file(
+            context, path.string().c_str(), nullptr),
+        "cannot read HEIC");
+
+    check_heif(
+        heif_context_get_primary_image_handle(
+            context, &handle),
+        "cannot open HEIC image handle");
+
+    const int width = heif_image_handle_get_width(handle);
+    const int height = heif_image_handle_get_height(handle);
+    const bool has_alpha =
+        heif_image_handle_has_alpha_channel(handle) != 0;
+    const int bit_depth =
+        heif_image_handle_get_luma_bits_per_pixel(handle);
 
     std::string colorspace_str = "Unknown";
     std::string chroma_str = "Unknown";
 
-    if (heif_decode_image(handle, &decoded, heif_colorspace_undefined, heif_chroma_undefined, nullptr).code == heif_error_Ok) {
-      heif_colorspace cs = heif_image_get_colorspace(decoded);
-      heif_chroma chroma = heif_image_get_chroma_format(decoded);
-      colorspace_str = heif_colorspace_to_string(cs);
-      chroma_str = heif_chroma_to_string(chroma);
-      heif_image_release(decoded);
-      decoded = nullptr;
+    heif_colorspace preferred_colorspace =
+        heif_colorspace_undefined;
+    heif_chroma preferred_chroma =
+        heif_chroma_undefined;
+
+    heif_error preferred_error =
+        heif_image_handle_get_preferred_decoding_colorspace(
+            handle,
+            &preferred_colorspace,
+            &preferred_chroma);
+
+    if (preferred_error.code == heif_error_Ok) {
+      colorspace_str =
+          heif_colorspace_to_string(preferred_colorspace);
+      chroma_str =
+          heif_chroma_to_string(preferred_chroma);
     }
 
-    std::cout << "File: " << path.string() << "\n"
-              << "  Format: HEIC / HEIF\n"
-              << "  Dimensions: " << width << "x" << height << "\n"
-              << "  Bit Depth: " << bit_depth << " bits/pixel\n"
-              << "  Alpha Channel: " << (has_alpha ? "Yes" : "No") << "\n"
-              << "  Colorspace: " << colorspace_str << "\n"
-              << "  Chroma Format: " << chroma_str << "\n";
+    std::cout
+        << "File: " << path.string() << "\n"
+        << "  Format: HEIC / HEIF\n"
+        << "  Dimensions: " << width << "x" << height << "\n"
+        << "  Bit Depth: " << bit_depth << " bits/pixel\n"
+        << "  Alpha Channel: " << (has_alpha ? "Yes" : "No") << "\n"
+        << "  Colorspace: " << colorspace_str << "\n"
+        << "  Chroma Format: " << chroma_str << "\n";
 
     heif_image_handle_release(handle);
     heif_context_free(context);
   } catch (const std::exception& e) {
-    if (decoded) heif_image_release(decoded);
-    if (handle) heif_image_handle_release(handle);
-    if (context) heif_context_free(context);
-    std::cout << "File: " << path.string() << "\n"
-              << "  Error reading HEIC metainfo: " << e.what() << "\n";
+    if (handle)
+      heif_image_handle_release(handle);
+    if (context)
+      heif_context_free(context);
+
+    std::cout
+        << "File: " << path.string() << "\n"
+        << "  Error reading HEIC metainfo: "
+        << e.what() << "\n";
   }
 }
+
 
 static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
                        const Metadata& metadata, bool strip_all, bool strip_gps) {
@@ -226,6 +250,13 @@ static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
         heif_image_get_colorspace(image);
     const heif_chroma actual_chroma =
         heif_image_get_chroma_format(image);
+
+    // Temporary debug output to stderr to help diagnose HEIC encoding issues.
+    std::cerr << "HEIC encode input: "
+          << heif_colorspace_to_string(actual_colorspace)
+          << " / "
+          << heif_chroma_to_string(actual_chroma)
+          << "\n";
 
     if (actual_colorspace != heif_colorspace_YCbCr || actual_chroma != heif_chroma_420) {
       throw std::runtime_error(
