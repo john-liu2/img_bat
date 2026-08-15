@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         build-type: [Release]
 
     runs-on: ${{ matrix.os }}
@@ -173,30 +173,6 @@ jobs:
             -DCMAKE_CXX_STANDARD=17 `
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
             -DCMAKE_CXX_EXTENSIONS=OFF
-
-      - name: Find heif-info - Windows
-      # Workaround: add the tools dir to PATH for details = run("heif-info", str(heic)).stdout
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Get-ChildItem `
-            "$env:VCPKG_INSTALLATION_ROOT" `
-            -Recurse `
-            -Filter "heif-info.exe" `
-            -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName
-
-      - name: Add libheif tools to PATH - Windows
-      # Workaround: add the tools dir to PATH for details = run("heif-info", str(heic)).stdout
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $tools = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\tools\libheif"
-
-          if (-not (Test-Path "$tools\heif-info.exe")) {
-            throw "heif-info.exe not found in $tools"
-          }
-          Add-Content $env:GITHUB_PATH $tools
 
       - name: Build
       # Cross-platform: use a single-line cmake command

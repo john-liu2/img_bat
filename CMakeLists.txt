@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(img_bat VERSION 0.1.0 LANGUAGES CXX)
+project(img_bat VERSION 0.1.1 LANGUAGES CXX)
 
 option(IMG_BAT_ENABLE_METADATA "Enable metadata editing with Exiv2" ON)
 option(IMG_BAT_ENABLE_HEIC "Enable HEIC/HEIF input and output with libheif" ON)
