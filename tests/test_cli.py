@@ -50,6 +50,9 @@ def test_heic(binary: str, directory: Path) -> None:
         "HEIC output was not created"
     )
 
+# TODO: add --info flag to img_bat. Use it here to get,
+# colorspace: YCbCr
+# chroma: 4:2:0
     details = run("heif-info", str(heic)).stdout
     assert "YCbCr, 4:2:0" in details, (
         "HEIC output did not use 4:2:0 chroma"
