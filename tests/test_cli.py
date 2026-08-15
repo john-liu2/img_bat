@@ -75,7 +75,7 @@ def test_heic(binary: str, directory: Path) -> None:
         "png",
         "--output",
         str(png_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if "--format png" fails
     )
     assert (png_dir / "source.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
