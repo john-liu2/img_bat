@@ -187,7 +187,7 @@ def main() -> None:
     parser.add_argument("--binary", required=True)
     parser.add_argument(
         "--mode",
-        choices=("heic", "metadata", "status", "version", "info"),
+        choices=("heic", "metadata", "status", "info", "version"),
         required=True,
     )
     parser.add_argument("--exiv2")

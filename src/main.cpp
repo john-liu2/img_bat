@@ -222,6 +222,19 @@ static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
       copy_plane(cb, heif_channel_Cb);
       copy_plane(cr, heif_channel_Cr);
     }
+    const heif_colorspace actual_colorspace =
+        heif_image_get_colorspace(image);
+    const heif_chroma actual_chroma =
+        heif_image_get_chroma_format(image);
+
+    if (actual_colorspace != heif_colorspace_YCbCr || actual_chroma != heif_chroma_420) {
+      throw std::runtime_error(
+          "HEIC encoder requires YCbCr 4:2:0 input, got " +
+          heif_colorspace_to_string(actual_colorspace) + " / " +
+          heif_chroma_to_string(actual_chroma)
+      );
+    }
+
     check_heif(heif_context_get_encoder_for_format(context, heif_compression_HEVC, &encoder), "HEIC encoder unavailable");
     check_heif(heif_encoder_set_lossy_quality(encoder, quality), "cannot set HEIC quality");
     check_heif(heif_context_encode_image(context, image, encoder, nullptr, &output_handle), "cannot encode HEIC");
