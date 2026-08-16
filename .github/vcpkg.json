@@ -1,0 +1,24 @@
+{
+  "name": "img-bat",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "exiv2",
+    {
+      "name": "libheif",
+      "features": ["hevc", "libde265", "x265"]
+    },
+    {
+      "name": "opencv4",
+      "default-features": false,
+      "features": [
+        "core",
+        "imgcodecs",
+        "imgproc",
+        "jpeg",
+        "png",
+        "tiff",
+        "webp"
+      ]
+    }
+  ]
+}

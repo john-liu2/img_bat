@@ -108,26 +108,29 @@ jobs:
             -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty FullName
 
-      - name: Install dependencies - Windows
+      - name: Setup vcpkg and Binary Cache - Windows
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgJsonGlob: 'vcpkg.json'
 
-          & $vcpkg version
-          & $vcpkg install `
-            opencv `
-            libheif `
-            exiv2 `
-            --triplet x64-windows
+      # - name: Install dependencies - Windows
+      #   if: runner.os == 'Windows'
+      #   shell: pwsh
+      #   run: |
+      #     $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
 
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-          & $vcpkg list | Select-String "opencv|libheif|exiv2"
+      #     & $vcpkg version
+      #     & $vcpkg install `
+      #       opencv `
+      #       libheif `
+      #       exiv2 `
+      #       --triplet x64-windows
 
-          Write-Host "=== Install libheif with specific codecs ==="
-          & $vcpkg install libheif[libde265,x265]:x64-windows
+      #     if ($LASTEXITCODE -ne 0) {
+      #       exit $LASTEXITCODE
+      #     }
+      #     & $vcpkg list | Select-String "opencv|libheif|exiv2"
 
       - name: Check vcpkg - Windows
         if: runner.os == 'Windows'
