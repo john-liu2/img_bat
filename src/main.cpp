@@ -874,6 +874,8 @@ static void print_progress(size_t completed, size_t total) {
 }
 
 int main(int argc, char** argv) {
+  // Initialize libheif plugins (registers libde265 decoder & x265 encoder)
+  heif_init(nullptr);
   try {
     const Options opt = parse_args(argc, argv);
     XmpRuntime xmp_runtime(opt.strip_all || opt.strip_gps);
@@ -884,6 +886,7 @@ int main(int argc, char** argv) {
       for (const auto& file : files) {
         print_info_for_file(file);
       }
+      heif_deinit();
       return 0;
     }
     // Parallelize across files.  Keep OpenCV single-threaded per worker to
@@ -929,9 +932,14 @@ int main(int argc, char** argv) {
       std::cout << "\nDone: " << succeeded << '/' << files.size() << " succeeded"
                 << " (elapsed: " << std::fixed << std::setprecision(2) << elapsed << " s)\n";
     }
+    heif_deinit();
     return succeeded == files.size() ? 0 : 1;
   } catch (const std::exception& error) {
     std::cerr << "Error: " << error.what() << "\nUse --help for usage.\n";
+    heif_deinit();
     return 2;
   }
+  // Cleanup when exiting
+  heif_deinit();
+  return 0;
 }
