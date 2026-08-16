@@ -1,7 +1,7 @@
 {
   "name": "img-bat",
   "version-string": "0.1.0",
-  "builtin-baseline": "38a3d6a91176bcab4c9e4210d7a6bc42f5fa08d0",
+  "builtin-baseline": "0cb7106b39d2b64c27d1e320b319a1f819b225fd",
   "dependencies": [
     "exiv2",
     {
