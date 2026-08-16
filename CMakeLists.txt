@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 project(img_bat VERSION 0.1.1 LANGUAGES CXX)
 
@@ -73,6 +73,14 @@ if(BUILD_TESTING)
            --binary $<TARGET_FILE:img_bat> --mode status)
   add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode version)
+
+  # Pass LIBHEIF_PLUGIN_PATH to CTest on Windows so libheif locates libde265.dll
+  if(WIN32 AND IMG_BAT_ENABLE_HEIC)
+    set_tests_properties(cli-heic PROPERTIES
+      ENVIRONMENT "LIBHEIF_PLUGIN_PATH=$<TARGET_FILE_DIR:img_bat>"
+    )
+  endif()
+
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
     if(EXIV2_EXECUTABLE)
@@ -85,16 +93,3 @@ endif()
 install(TARGETS img_bat
   RUNTIME DESTINATION img_bat/bin COMPONENT default
   BUNDLE DESTINATION img_bat/bin COMPONENT default)
-
-if(MSVC)
-    # Copy libheif plugin DLLs to <target_dir>/libheif so as to find the plugins at runtime
-    add_custom_command(TARGET img_bat POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin/libheif"
-            "$<TARGET_FILE_DIR:img_bat>/libheif"
-        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-            "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/bin/libheif"
-            "$<TARGET_FILE_DIR:img_bat>/libheif"
-        COMMENT "Copying libheif plugin DLLs to target folder..."
-    )
-endif()
