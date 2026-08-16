@@ -202,18 +202,20 @@ jobs:
             -Path "C:\vcpkg\installed\x64-windows\share\libheif\libheif-config-release.cmake" `
             -Pattern "PLUGIN|de265|x265"
 
-          Write-Host "`n=== HEIF decoders ==="
-          & "C:\vcpkg\installed\x64-windows\bin\heif-enc.exe" --list-decoders
-          if ($LASTEXITCODE -ne 0) {
-              & "C:\vcpkg\installed\x64-windows\bin\heif-enc.exe" --help
-          }
-
-          Write-Host "`n=== Decode error details ==="
-          # Then use the expanded heif_decode_image() error handling above.
-
+          Write-Host "`n=== libheif package files ==="
           Get-ChildItem "C:\vcpkg\installed\x64-windows" -Recurse -File |
-            Where-Object { $_.Name -match "heif.*plugin|plugin.*heif" } |
-            Select-Object FullName
+              Where-Object {
+                  $_.Name -match "heif" -or
+                  $_.Name -match "de265" -or
+                  $_.Name -match "x265"
+              } |
+              Select-Object FullName
+
+          Write-Host "`n=== libheif CMake config ==="
+          Get-Content `
+              "C:\vcpkg\installed\x64-windows\share\libheif\libheif-config.cmake" |
+              Select-String -Pattern "de265|x265|plugin|heif"
+
 
       - name: Test
         working-directory: ${{ github.workspace }}/build

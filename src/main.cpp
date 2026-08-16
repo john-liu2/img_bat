@@ -107,7 +107,26 @@ static cv::Mat read_heif(const fs::path& path) {
     check_heif(heif_context_get_primary_image_handle(context, &handle), "cannot open HEIC image");
     const bool alpha = heif_image_handle_has_alpha_channel(handle) != 0;
     const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
-    check_heif(heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr), "cannot decode HEIC");
+    // check_heif(heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr), "cannot decode HEIC");
+    heif_error error = heif_decode_image(
+        handle,
+        &decoded,
+        heif_colorspace_RGB,
+        chroma,
+        nullptr
+    );
+
+    if (error.code != heif_error_Ok) {
+      throw std::runtime_error(
+          "cannot decode HEIC: code=" +
+          std::to_string(static_cast<int>(error.code)) +
+          ", subcode=" +
+          std::to_string(static_cast<int>(error.subcode)) +
+          ", message=" +
+          std::string(error.message ? error.message : "")
+      );
+    }
+
     int stride = 0;
     const uint8_t* pixels = heif_image_get_plane_readonly(decoded, heif_channel_interleaved, &stride);
     if (!pixels) throw std::runtime_error("cannot access decoded HEIC pixels");
