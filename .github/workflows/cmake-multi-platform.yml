@@ -191,18 +191,18 @@ jobs:
           $header | Select-String "LIBHEIF_VERSION"
 
       - name: Build
-      # Cross-platform: use a single-line cmake command
+      # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
       - name: Check libheif details - Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "`n=== heif.dll details ==="
-          Get-Item "D:\a\img_bat\img_bat\build\Release\heif.dll" |
+          Write-Host "=== heif.dll details ==="
+          Get-ChildItem "D:\a\img_bat\img_bat\build\Release\heif.dll" |
               Select-Object FullName, Length, LastWriteTime
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
-        # Cross-platform: use a single-line ctest command
+        # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
         run: ctest --build-config ${{ matrix.build-type }} --output-on-failure

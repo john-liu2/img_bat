@@ -94,8 +94,20 @@ static std::string heif_chroma_to_string(heif_chroma chroma) {
 static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
                                 const Metadata& metadata, bool strip_all, bool strip_gps);
 
-static void check_heif(heif_error error, const std::string& action) {
-  if (error.code != heif_error_Ok) throw std::runtime_error(action + ": " + error.message);
+static void check_heif(
+    heif_error error,
+    const std::string& action)
+{
+    if (error.code != heif_error_Ok) {
+        throw std::runtime_error(
+            action +
+            ": code=" +
+            std::to_string(static_cast<int>(error.code)) +
+            ", subcode=" +
+            std::to_string(static_cast<int>(error.subcode)) +
+            ", message=" +
+            (error.message ? error.message : "<null>"));
+    }
 }
 
 static cv::Mat read_heif(const fs::path& path) {
