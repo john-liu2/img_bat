@@ -67,6 +67,8 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME cli-heic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode heic)
+  add_test(NAME cli-info COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
+           --binary $<TARGET_FILE:img_bat> --mode info)
   add_test(NAME cli-status COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode status)
   add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
