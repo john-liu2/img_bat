@@ -1,18 +1,19 @@
 {
   "name": "img-bat",
-  "version-string": "0.1.0",
+  "version-string": "0.1.1",
   "builtin-baseline": "94a541197763a4f449a1b91478df48c0584a6256",
   "dependencies": [
     "exiv2",
     {
       "name": "libheif",
-      "features": ["hevc", "libde265", "x265"]
+      "features": [
+        "hevc"
+      ]
     },
     {
       "name": "opencv4",
       "default-features": false,
       "features": [
-        "core",
         "imgcodecs",
         "imgproc",
         "jpeg",
