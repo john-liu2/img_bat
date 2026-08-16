@@ -115,25 +115,30 @@ jobs:
           vcpkgGitCommitId: '94a541197763a4f449a1b91478df48c0584a6256'
           vcpkgJsonGlob: 'vcpkg.json'
 
-      - name: Check vcpkg - Windows
+      # Config CMake (It triggers vcpkg to read vcpkg.json & install packages)
+      - name: Config CMake - Windows
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build -S "${{ github.workspace }}"
+          -DCMAKE_TOOLCHAIN_FILE="$env:RUNVCPKG_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+
+      - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $vcpkg = "$env:GITHUB_WORKSPACE\vcpkg\vcpkg.exe"
           & $vcpkg list | Select-String "libheif|opencv|exiv2"
 
-          # $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
           $vcpkgRoot = "$env:GITHUB_WORKSPACE\vcpkg_installed\x64-windows"
 
           Write-Host "=== libheif files:"
           # Correct path in Manifest Mode:
           Get-ChildItem -Recurse "$vcpkgRoot\share\libheif"
 
-          # Get-ChildItem "$vcpkgRoot" -Recurse -ErrorAction SilentlyContinue |
-          #   Where-Object {
-          #     $_.Name -match "libheif|heif.*cmake"
-          #   } |
-          #   Select-Object FullName
+          Write-Host "=== LIBHEIF_VERSION in heif_version.h"
+          $header = Get-Content "$vcpkgRoot\include\libheif\heif_version.h"
+          $header | Select-String "LIBHEIF_VERSION"
 
           Write-Host "=== portfile files:"
           Get-ChildItem "$vcpkgRoot" -Recurse -Filter "portfile.cmake" |
@@ -144,40 +149,22 @@ jobs:
           Get-ChildItem "$vcpkgRoot\ports\libheif" -Recurse |
               Select-Object FullName
 
-      - name: Inspect libheif CMake package - Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $config = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif\libheif-config.cmake"
-
-          Write-Host "=== libheif config ==="
-          Get-Content $config
-
-          Write-Host "`n=== libheif config files ==="
-          Get-ChildItem `
-            "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif"
-
-      - name: Configure CMake - Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cmake `
-            -S "${{ github.workspace }}" `
-            -B "${{ github.workspace }}/build" `
-            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} `
-            -G "Visual Studio 18 2026" `
-            -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_PREFIX_PATH="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" `
-            -DCMAKE_CXX_STANDARD=17 `
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON `
-            -DCMAKE_CXX_EXTENSIONS=OFF
-
-          Write-Host "=== libheif version ==="
-          $header = Get-Content `
-              "C:\vcpkg\installed\x64-windows\include\libheif\heif_version.h"
-          $header | Select-String "LIBHEIF_VERSION"
+      # - name: Configure CMake - Windows
+      #   if: runner.os == 'Windows'
+      #   shell: pwsh
+      #   run: |
+      #     cmake `
+      #       -S "${{ github.workspace }}" `
+      #       -B "${{ github.workspace }}/build" `
+      #       -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} `
+      #       -G "Visual Studio 18 2026" `
+      #       -A x64 `
+      #       -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
+      #       -DVCPKG_TARGET_TRIPLET=x64-windows `
+      #       -DCMAKE_PREFIX_PATH="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" `
+      #       -DCMAKE_CXX_STANDARD=17 `
+      #       -DCMAKE_CXX_STANDARD_REQUIRED=ON `
+      #       -DCMAKE_CXX_EXTENSIONS=OFF
 
       - name: Build
       # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
