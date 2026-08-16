@@ -178,14 +178,16 @@ jobs:
       # Cross-platform: use a single-line cmake command
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
-      - name: Check libheif plugin details - Windows
+      - name: Check libheif details - Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Write-Host "=== libheif plugin directories ==="
-          Get-ChildItem "C:\vcpkg\installed\x64-windows" -Recurse -Directory |
-            Where-Object { $_.FullName -match "plugin|libheif" } |
-            Select-Object FullName
+          where.exe heif.dll
+          where.exe libde265.dll
+          where.exe libx265.dll
+
+          Get-Item "D:\a\img_bat\img_bat\build\Release\heif.dll" |
+            Select-Object FullName, Length, LastWriteTime
 
           Write-Host "`n=== libheif plugin DLLs ==="
           Get-ChildItem "C:\vcpkg\installed\x64-windows" -Recurse -File |
