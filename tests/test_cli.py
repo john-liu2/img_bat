@@ -53,7 +53,7 @@ def test_heic(binary: str, directory: Path) -> None:
         "heic",
         "--output",
         str(heic_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if fails
     )
     heic = heic_dir / "source.heic"
     assert heic.exists() and heic.stat().st_size > 0, (
@@ -77,7 +77,7 @@ def test_heic(binary: str, directory: Path) -> None:
         "png",
         "--output",
         str(png_dir),
-        # "--quiet",  # not quiet to get more info if "--format png" fails
+        # "--quiet",  # not quiet to get more info if fails
     )
     assert (png_dir / "source.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
@@ -94,7 +94,7 @@ def test_heic(binary: str, directory: Path) -> None:
         "80",
         "--output",
         str(quality_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if fails
     )
     assert (quality_dir / "source.heic").exists(), (
         "explicit HEIC quality did not produce output"
