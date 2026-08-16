@@ -131,7 +131,6 @@ jobs:
         shell: pwsh
         run: |
           $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
-
           & $vcpkg list | Select-String "libheif|opencv|exiv2"
 
           Write-Host "`nlibheif files:"
@@ -143,6 +142,18 @@ jobs:
               $_.Name -match "libheif|heif.*cmake"
             } |
             Select-Object FullName
+
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          Get-ChildItem "$vcpkgRoot" -Recurse -Filter "portfile.cmake" |
+              Where-Object { $_.FullName -match "\\ports\\libheif\\" } |
+              Select-Object FullName
+
+          Get-ChildItem "$vcpkgRoot\ports\libheif" -Recurse |
+              Select-Object FullName
+
+          Select-String `
+              -Path "$vcpkgRoot\ports\libheif\*" `
+              -Pattern "LIBDE265|DE265|X265|WITH_.*PLUGIN|hevc"
 
       - name: Inspect libheif CMake package - Windows
         if: runner.os == 'Windows'
@@ -174,6 +185,11 @@ jobs:
             -DCMAKE_CXX_STANDARD_REQUIRED=ON `
             -DCMAKE_CXX_EXTENSIONS=OFF
 
+          Write-Host "=== libheif version ==="
+          $header = Get-Content `
+              "C:\vcpkg\installed\x64-windows\include\libheif\heif_version.h"
+          $header | Select-String "LIBHEIF_VERSION"
+
       - name: Build
       # Cross-platform: use a single-line cmake command
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
@@ -182,42 +198,16 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          where.exe heif.dll
-          where.exe libde265.dll
-          where.exe libx265.dll
-
+          Write-Host "=== heif.dll details ==="
           Get-Item "D:\a\img_bat\img_bat\build\Release\heif.dll" |
             Select-Object FullName, Length, LastWriteTime
 
-          Write-Host "`n=== libheif plugin DLLs ==="
-          Get-ChildItem "C:\vcpkg\installed\x64-windows" -Recurse -File |
-            Where-Object {
-                $_.Name -match "heif.*(de265|x265).*\.dll" -or
-                $_.Name -match "(de265|x265).*heif.*\.dll"
-            } |
-            Select-Object FullName
-
-          Select-String `
-            -Path "C:\vcpkg\installed\x64-windows\share\libheif\libheif-config.cmake" `
-            -Pattern "PLUGIN|de265|x265"
-          Select-String `
-            -Path "C:\vcpkg\installed\x64-windows\share\libheif\libheif-config-release.cmake" `
-            -Pattern "PLUGIN|de265|x265"
-
-          Write-Host "`n=== libheif package files ==="
-          Get-ChildItem "C:\vcpkg\installed\x64-windows" -Recurse -File |
-              Where-Object {
-                  $_.Name -match "heif" -or
-                  $_.Name -match "de265" -or
-                  $_.Name -match "x265"
-              } |
-              Select-Object FullName
-
-          Write-Host "`n=== libheif CMake config ==="
-          Get-Content `
-              "C:\vcpkg\installed\x64-windows\share\libheif\libheif-config.cmake" |
-              Select-String -Pattern "de265|x265|plugin|heif"
-
+          Write-Host "=== heif.dll dependencies ==="
+          $dumpbin = "$env:VCPKG_INSTALLATION_ROOT\bin\Hostx64\x64\dumpbin.exe"
+          & $dumpbin /DEPENDENTS `
+              "C:\vcpkg\installed\x64-windows\bin\heif.dll"
+          & $dumpbin /DEPENDENTS `
+              "D:\a\img_bat\img_bat\build\Release\heif.dll"
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
