@@ -85,3 +85,16 @@ endif()
 install(TARGETS img_bat
   RUNTIME DESTINATION img_bat/bin COMPONENT default
   BUNDLE DESTINATION img_bat/bin COMPONENT default)
+
+if(MSVC)
+    # Copy libheif plugin DLLs to <target_dir>/libheif so as to find the plugins at runtime
+    add_custom_command(TARGET img_bat POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin/libheif"
+            "$<TARGET_FILE_DIR:img_bat>/libheif"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg_installed/x64-windows/bin/libheif"
+            "$<TARGET_FILE_DIR:img_bat>/libheif"
+        COMMENT "Copying libheif plugin DLLs to target folder..."
+    )
+endif()
