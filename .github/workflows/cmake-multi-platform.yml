@@ -122,6 +122,8 @@ jobs:
           cmake -B build -S "${{ github.workspace }}"
           -DCMAKE_TOOLCHAIN_FILE="$env:RUNVCPKG_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DVCPKG_MANIFEST_MODE=ON
 
       - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
