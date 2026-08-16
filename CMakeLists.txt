@@ -79,6 +79,13 @@ if(BUILD_TESTING)
     set_tests_properties(cli-heic PROPERTIES
       ENVIRONMENT "LIBHEIF_PLUGIN_PATH=$<TARGET_FILE_DIR:img_bat>"
     )
+    # Copy libheif plugin subfolder
+    add_custom_command(TARGET img_bat POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin/libheif"
+        "$<TARGET_FILE_DIR:img_bat>/libheif"
+      COMMENT "Copying libheif plugins to target libheif subfolder..."
+    )
   endif()
 
   if(Exiv2_FOUND)
