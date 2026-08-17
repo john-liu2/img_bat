@@ -41,7 +41,7 @@ void check_heif(heif_error error, const std::string& action) {
 }
 
 cv::Mat read_heif(const fs::path& path) {
-  // 1. Read binary file into memory using std::ifstream (handles Windows wchar_t paths natively)
+  // 1. Open and read the raw binary file using std::ifstream (handles Windows wchar_t paths)
   std::ifstream file(path, std::ios::binary | std::ios::ate);
   if (!file.is_open()) {
     throw std::runtime_error("cannot open HEIC file: " + path.string());
@@ -67,22 +67,12 @@ cv::Mat read_heif(const fs::path& path) {
     throw std::runtime_error("failed to allocate libheif context");
   }
 
-  // 3. Read HEIF data from memory buffer
+  // 3. Decode from memory buffer
   heif_error err = heif_context_read_from_memory_without_copy(ctx, buffer.data(), buffer.size(), nullptr);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
     heif_deinit();
-
-    // Format first 16 bytes for diagnostic logging if header is corrupt
-    std::string header_hex;
-    for (size_t i = 0; i < std::min<size_t>(buffer.size(), 16); ++i) {
-      char hex[8];
-      snprintf(hex, sizeof(hex), "%02X ", buffer[i]);
-      header_hex += hex;
-    }
-
-    throw std::runtime_error("cannot read HEIC (size: " + std::to_string(buffer.size()) +
-                             " bytes, header: [" + header_hex + "]): " + std::string(err.message));
+    throw std::runtime_error("cannot read HEIC from memory: " + std::string(err.message));
   }
 
   heif_image_handle* handle = nullptr;

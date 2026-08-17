@@ -9,3 +9,5 @@
 *.PNG  binary
 *.JPEG binary
 *.WEBP binary
+* text=auto eol=lf
+tests/fixtures/** text eol=lf
