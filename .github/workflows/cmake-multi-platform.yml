@@ -34,14 +34,13 @@ jobs:
 
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
-        shell: bash
         run: |
           brew untap aws/tap 2>/dev/null || true
           brew install opencv libheif exiv2
+          brew upgrade libheif
 
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
-        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -176,6 +175,11 @@ jobs:
           Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
           Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
           Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
+
+      - name: Install Python dependencies for Test
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r ${{ github.workspace }}/tests/requirements.txt
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
