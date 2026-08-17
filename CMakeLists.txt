@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
-project(img_bat VERSION 0.1.0 LANGUAGES CXX)
+project(img_bat VERSION 0.1.1 LANGUAGES CXX)
 
 option(IMG_BAT_ENABLE_METADATA "Enable metadata editing with Exiv2" ON)
 option(IMG_BAT_ENABLE_HEIC "Enable HEIC/HEIF input and output with libheif" ON)
@@ -67,10 +67,13 @@ if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
   add_test(NAME cli-heic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode heic)
+  add_test(NAME cli-info COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
+           --binary $<TARGET_FILE:img_bat> --mode info)
   add_test(NAME cli-status COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode status)
   add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode version)
+
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
     if(EXIV2_EXECUTABLE)

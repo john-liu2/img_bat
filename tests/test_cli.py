@@ -3,15 +3,23 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 import argparse
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+import tomllib
+
+HERE = Path(__file__).resolve().parent
+JPEG_FIXTURE = HERE / "fixtures/source.jpg"
+HEIC_FIXTURE = HERE / "fixtures/src.heic"
 
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures"
-JPEG_FIXTURE = FIXTURE_DIR / "source.jpg"
+def pkg_version() -> str:
+    with (HERE.parent / "pyproject.toml").open("rb") as f:
+        return tomllib.load(f)["project"]["version"]
+
+VERSION = pkg_version()
 
 
 def run(*command: str) -> subprocess.CompletedProcess[str]:
@@ -43,19 +51,20 @@ def test_heic(binary: str, directory: Path) -> None:
         "heic",
         "--output",
         str(heic_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if fails
     )
     heic = heic_dir / "source.heic"
     assert heic.exists() and heic.stat().st_size > 0, (
         "HEIC output was not created"
     )
 
-# TODO: add --info flag to img_bat. Use it here to get,
-# colorspace: YCbCr
-# chroma: 4:2:0
-    details = run("heif-info", str(heic)).stdout
-    assert "YCbCr, 4:2:0" in details, (
-        "HEIC output did not use 4:2:0 chroma"
+    info_out = run(binary, "--input", str(heic), "--info").stdout
+    info_out_lower = info_out.lower()
+    assert "ycbcr" in info_out_lower, (
+        f"HEIC --info output missing YCbCr colorspace metadata. Got output:\n{info_out}"
+    )
+    assert "4:2:0" in info_out, (
+        f"HEIC --info output missing 4:2:0 chroma metadata. Got output:\n{info_out}"
     )
 
     run(
@@ -66,7 +75,7 @@ def test_heic(binary: str, directory: Path) -> None:
         "png",
         "--output",
         str(png_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if fails
     )
     assert (png_dir / "source.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
@@ -83,10 +92,35 @@ def test_heic(binary: str, directory: Path) -> None:
         "80",
         "--output",
         str(quality_dir),
-        "--quiet",
+        # "--quiet",  # not quiet to get more info if fails
     )
     assert (quality_dir / "source.heic").exists(), (
         "explicit HEIC quality did not produce output"
+    )
+
+
+def test_info(binary: str, directory: Path) -> None:
+    source = write_jpeg(directory)
+    heic_dir = directory / "heic_info"
+    run(
+        binary,
+        "--input",
+        str(source),
+        "--format",
+        "heic",
+        "--output",
+        str(heic_dir),
+        "--quiet",
+    )
+    heic = heic_dir / "source.heic"
+
+    result = run(binary, "--input", str(heic), "--info")
+    out_lower = result.stdout.lower()
+    assert "ycbcr" in out_lower, (
+        f"colorspace metadata not reported by --info. Got output:\n{result.stdout}"
+    )
+    assert "4:2:0" in result.stdout, (
+        f"chroma metadata not reported by --info. Got output:\n{result.stdout}"
     )
 
 
@@ -145,15 +179,20 @@ def test_status(binary: str, directory: Path) -> None:
 def test_version(binary: str) -> None:
     for flag in ("-v", "--version"):
         result = run(binary, flag)
-        assert result.stdout.strip() == "img_bat 0.1.0", f"unexpected version output for {flag}"
+        assert result.stdout.strip() == f"img_bat {VERSION}", f"unexpected version output for {flag}"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True)
-    parser.add_argument("--mode", choices=("heic", "metadata", "status", "version"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=("heic", "metadata", "status", "info", "version"),
+        required=True,
+    )
     parser.add_argument("--exiv2")
     args = parser.parse_args()
+
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)
         if args.mode == "heic":
@@ -163,6 +202,8 @@ def main() -> None:
             test_metadata(args.binary, args.exiv2, directory)
         elif args.mode == "status":
             test_status(args.binary, directory)
+        elif args.mode == "info":
+            test_info(args.binary, directory)
         else:
             test_version(args.binary)
 

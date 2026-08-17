@@ -91,16 +91,14 @@ jobs:
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-          Write-Host "vswhere: $vswhere"
-
+          Write-Host "=== vswhere: $vswhere"
           & $vswhere `
             -latest `
             -products * `
             -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
             -property installationPath
 
-          Write-Host "`nC++ compiler files:"
-
+          Write-Host "=== C++ compiler files:"
           Get-ChildItem `
             "C:\Program Files\Microsoft Visual Studio\18" `
             -Filter cl.exe `
@@ -108,101 +106,78 @@ jobs:
             -ErrorAction SilentlyContinue |
             Select-Object -ExpandProperty FullName
 
-      - name: Install dependencies - Windows
+      - name: Setup vcpkg and Binary Cache - Windows
+        if: runner.os == 'Windows'
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: '94a541197763a4f449a1b91478df48c0584a6256'
+          vcpkgJsonGlob: 'vcpkg.json'
+
+      # Config CMake (It triggers vcpkg to read vcpkg.json & install packages)
+      - name: Config CMake - Windows
+        if: runner.os == 'Windows'
+        run: >
+          cmake -B build -S "${{ github.workspace }}"
+          -DCMAKE_TOOLCHAIN_FILE="$env:RUNVCPKG_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DVCPKG_MANIFEST_MODE=ON
+          -DVCPKG_MANIFEST_DIR="${{ github.workspace }}\windows"
+
+      - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
+          $manifestDir = "$env:GITHUB_WORKSPACE\windows"
+          $vcpkgExe = "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe"
+          $vcpkgInstalled = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
 
-          & $vcpkg version
-          & $vcpkg install `
-            opencv `
-            libheif `
-            exiv2 `
-            --triplet x64-windows
+          Write-Host "=== Installed Packages in Manifest Mode:"
+          & $vcpkgExe list --x-manifest-root="$manifestDir"
 
-          if ($LASTEXITCODE -ne 0) {
-            exit $LASTEXITCODE
-          }
-          & $vcpkg list | Select-String "opencv|libheif|exiv2"
+          Write-Host "=== libheif share files:"
+          Get-ChildItem -Recurse "$vcpkgInstalled\share\libheif" -ErrorAction SilentlyContinue
 
-      - name: Diagnose vcpkg - Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vcpkg = "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe"
+          Write-Host "=== LIBHEIF_VERSION in heif_version.h"
+          $header = Get-Content "$vcpkgInstalled\include\libheif\heif_version.h"
+          $header | Select-String "LIBHEIF_VERSION"
 
-          & $vcpkg list | Select-String "libheif|opencv|exiv2"
-
-          Write-Host "`nlibheif files:"
-          Get-ChildItem `
-            "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" `
-            -Recurse `
-            -ErrorAction SilentlyContinue |
-            Where-Object {
-              $_.Name -match "libheif|heif.*cmake"
-            } |
-            Select-Object FullName
-
-      - name: Inspect libheif CMake package - Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $config = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif\libheif-config.cmake"
-
-          Write-Host "=== libheif config ==="
-          Get-Content $config
-
-          Write-Host "`n=== libheif config files ==="
-          Get-ChildItem `
-            "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\share\libheif"
-
-      - name: Configure CMake - Windows
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cmake `
-            -S "${{ github.workspace }}" `
-            -B "${{ github.workspace }}/build" `
-            -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} `
-            -G "Visual Studio 18 2026" `
-            -A x64 `
-            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
-            -DVCPKG_TARGET_TRIPLET=x64-windows `
-            -DCMAKE_PREFIX_PATH="$env:VCPKG_INSTALLATION_ROOT/installed/x64-windows" `
-            -DCMAKE_CXX_STANDARD=17 `
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON `
-            -DCMAKE_CXX_EXTENSIONS=OFF
-
-      - name: Find heif-info - Windows
-      # Workaround: add the tools dir to PATH for details = run("heif-info", str(heic)).stdout
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Get-ChildItem `
-            "$env:VCPKG_INSTALLATION_ROOT" `
-            -Recurse `
-            -Filter "heif-info.exe" `
-            -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty FullName
-
-      - name: Add libheif tools to PATH - Windows
-      # Workaround: add the tools dir to PATH for details = run("heif-info", str(heic)).stdout
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $tools = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\tools\libheif"
-
-          if (-not (Test-Path "$tools\heif-info.exe")) {
-            throw "heif-info.exe not found in $tools"
-          }
-          Add-Content $env:GITHUB_PATH $tools
+          Write-Host "=== libheif portfile in vcpkg repo:"
+            $portPath = "$env:RUNVCPKG_VCPKG_ROOT\ports\libheif"
+            if (Test-Path $portPath) {
+                Get-ChildItem "$portPath" -Recurse | Select-Object FullName
+            } else {
+                Write-Host "Portfile not found at $portPath"
+            }
 
       - name: Build
-      # Cross-platform: use a single-line cmake command
+      # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
+
+      - name: Check before running CTest - Windows
+        if: runner.os == 'Windows'
+        run: |
+          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
+
+          Write-Host "=== ALL libheif-related files ==="
+          Get-ChildItem $installed -Recurse -File |
+              Where-Object {
+                  $_.Name -match 'heif|de265|x265'
+              } |
+              Select-Object FullName, Length
+
+          Write-Host "=== plugin directories ==="
+          Get-ChildItem $installed -Recurse -Directory |
+              Where-Object {
+                  $_.FullName -match 'plugin'
+              } |
+              Select-Object FullName
+
+          Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
+          Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
+          Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
-        # Cross-platform: use a single-line ctest command
+        # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
         run: ctest --build-config ${{ matrix.build-type }} --output-on-failure

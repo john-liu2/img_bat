@@ -53,6 +53,7 @@ struct Options {
   bool quiet = false;
   bool strip_all = false;
   bool strip_gps = false;
+  bool info = false;
 };
 
 static std::string lower(std::string value) {
@@ -69,11 +70,44 @@ static bool is_image(const fs::path& path) {
 }
 
 #ifdef IMG_BAT_WITH_LIBHEIF
+static std::string heif_colorspace_to_string(heif_colorspace cs) {
+  switch (cs) {
+    case heif_colorspace_YCbCr: return "YCbCr";
+    case heif_colorspace_RGB: return "RGB";
+    case heif_colorspace_monochrome: return "Monochrome";
+    default: return "Unknown/Undefined";
+  }
+}
+
+static std::string heif_chroma_to_string(heif_chroma chroma) {
+  switch (chroma) {
+    case heif_chroma_monochrome: return "Monochrome";
+    case heif_chroma_420: return "4:2:0";
+    case heif_chroma_422: return "4:2:2";
+    case heif_chroma_444: return "4:4:4";
+    case heif_chroma_interleaved_RGB: return "Interleaved RGB";
+    case heif_chroma_interleaved_RGBA: return "Interleaved RGBA";
+    default: return "Unknown/Undefined";
+  }
+}
+
 static void write_heif_metadata(heif_context* context, const heif_image_handle* handle,
                                 const Metadata& metadata, bool strip_all, bool strip_gps);
 
-static void check_heif(heif_error error, const std::string& action) {
-  if (error.code != heif_error_Ok) throw std::runtime_error(action + ": " + error.message);
+static void check_heif(
+    heif_error error,
+    const std::string& action)
+{
+    if (error.code != heif_error_Ok) {
+        throw std::runtime_error(
+            action +
+            ": code=" +
+            std::to_string(static_cast<int>(error.code)) +
+            ", subcode=" +
+            std::to_string(static_cast<int>(error.subcode)) +
+            ", message=" +
+            (error.message ? error.message : "<null>"));
+    }
 }
 
 static cv::Mat read_heif(const fs::path& path) {
@@ -85,7 +119,26 @@ static cv::Mat read_heif(const fs::path& path) {
     check_heif(heif_context_get_primary_image_handle(context, &handle), "cannot open HEIC image");
     const bool alpha = heif_image_handle_has_alpha_channel(handle) != 0;
     const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
-    check_heif(heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr), "cannot decode HEIC");
+    // check_heif(heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr), "cannot decode HEIC");
+    heif_error error = heif_decode_image(
+        handle,
+        &decoded,
+        heif_colorspace_RGB,
+        chroma,
+        nullptr
+    );
+
+    if (error.code != heif_error_Ok) {
+      throw std::runtime_error(
+          "cannot decode HEIC: code=" +
+          std::to_string(static_cast<int>(error.code)) +
+          ", subcode=" +
+          std::to_string(static_cast<int>(error.subcode)) +
+          ", message=" +
+          std::string(error.message ? error.message : "")
+      );
+    }
+
     int stride = 0;
     const uint8_t* pixels = heif_image_get_plane_readonly(decoded, heif_channel_interleaved, &stride);
     if (!pixels) throw std::runtime_error("cannot access decoded HEIC pixels");
@@ -106,6 +159,74 @@ static cv::Mat read_heif(const fs::path& path) {
     throw;
   }
 }
+
+static void print_heif_info(const fs::path& path) {
+  heif_context* context = heif_context_alloc();
+  heif_image_handle* handle = nullptr;
+
+  try {
+    check_heif(
+        heif_context_read_from_file(
+            context, path.string().c_str(), nullptr),
+        "cannot read HEIC");
+
+    check_heif(
+        heif_context_get_primary_image_handle(
+            context, &handle),
+        "cannot open HEIC image handle");
+
+    const int width = heif_image_handle_get_width(handle);
+    const int height = heif_image_handle_get_height(handle);
+    const bool has_alpha =
+        heif_image_handle_has_alpha_channel(handle) != 0;
+    const int bit_depth =
+        heif_image_handle_get_luma_bits_per_pixel(handle);
+
+    std::string colorspace_str = "Unknown";
+    std::string chroma_str = "Unknown";
+
+    heif_colorspace preferred_colorspace =
+        heif_colorspace_undefined;
+    heif_chroma preferred_chroma =
+        heif_chroma_undefined;
+
+    heif_error preferred_error =
+        heif_image_handle_get_preferred_decoding_colorspace(
+            handle,
+            &preferred_colorspace,
+            &preferred_chroma);
+
+    if (preferred_error.code == heif_error_Ok) {
+      colorspace_str =
+          heif_colorspace_to_string(preferred_colorspace);
+      chroma_str =
+          heif_chroma_to_string(preferred_chroma);
+    }
+
+    std::cout
+        << "File: " << path.string() << "\n"
+        << "  Format: HEIC / HEIF\n"
+        << "  Dimensions: " << width << "x" << height << "\n"
+        << "  Bit Depth: " << bit_depth << " bits/pixel\n"
+        << "  Alpha Channel: " << (has_alpha ? "Yes" : "No") << "\n"
+        << "  Colorspace: " << colorspace_str << "\n"
+        << "  Chroma Format: " << chroma_str << "\n";
+
+    heif_image_handle_release(handle);
+    heif_context_free(context);
+  } catch (const std::exception& e) {
+    if (handle)
+      heif_image_handle_release(handle);
+    if (context)
+      heif_context_free(context);
+
+    std::cout
+        << "File: " << path.string() << "\n"
+        << "  Error reading HEIC metainfo: "
+        << e.what() << "\n";
+  }
+}
+
 
 static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
                        const Metadata& metadata, bool strip_all, bool strip_gps) {
@@ -156,6 +277,26 @@ static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
       copy_plane(cb, heif_channel_Cb);
       copy_plane(cr, heif_channel_Cr);
     }
+    const heif_colorspace actual_colorspace =
+        heif_image_get_colorspace(image);
+    const heif_chroma actual_chroma =
+        heif_image_get_chroma_format(image);
+
+    // Temporary debug output to stderr to help diagnose HEIC encoding issues.
+    std::cerr << "HEIC encode input: "
+          << heif_colorspace_to_string(actual_colorspace)
+          << " / "
+          << heif_chroma_to_string(actual_chroma)
+          << "\n";
+
+    if (actual_colorspace != heif_colorspace_YCbCr || actual_chroma != heif_chroma_420) {
+      throw std::runtime_error(
+          "HEIC encoder requires YCbCr 4:2:0 input, got " +
+          heif_colorspace_to_string(actual_colorspace) + " / " +
+          heif_chroma_to_string(actual_chroma)
+      );
+    }
+
     check_heif(heif_context_get_encoder_for_format(context, heif_compression_HEVC, &encoder), "HEIC encoder unavailable");
     check_heif(heif_encoder_set_lossy_quality(encoder, quality), "cannot set HEIC quality");
     check_heif(heif_context_encode_image(context, image, encoder, nullptr, &output_handle), "cannot encode HEIC");
@@ -174,6 +315,110 @@ static void write_heif(const fs::path& path, const cv::Mat& input, int quality,
   }
 }
 #endif
+
+static void print_generic_info(const fs::path& path) {
+  cv::Mat img = cv::imread(path.string(), cv::IMREAD_UNCHANGED);
+  if (img.empty()) {
+    std::cout << "File: " << path.string() << "\n"
+              << "  Error: Could not decode image\n";
+    return;
+  }
+
+  std::string depth_str;
+  switch (img.depth()) {
+    case CV_8U:  depth_str = "8-bit unsigned"; break;
+    case CV_8S:  depth_str = "8-bit signed"; break;
+    case CV_16U: depth_str = "16-bit unsigned"; break;
+    case CV_16S: depth_str = "16-bit signed"; break;
+    case CV_32S: depth_str = "32-bit signed"; break;
+    case CV_32F: depth_str = "32-bit float"; break;
+    case CV_64F: depth_str = "64-bit float"; break;
+    default:     depth_str = "Unknown"; break;
+  }
+
+  std::string cs_str;
+  std::string chroma_str;
+  if (img.channels() == 1) {
+    cs_str = "Grayscale";
+    chroma_str = "Monochrome (4:0:0)";
+  } else if (img.channels() == 3) {
+    cs_str = "BGR / RGB";
+    chroma_str = "4:4:4";
+  } else if (img.channels() == 4) {
+    cs_str = "BGRA / RGBA";
+    chroma_str = "4:4:4:4";
+  } else {
+    cs_str = std::to_string(img.channels()) + "-channel";
+    chroma_str = "Custom";
+  }
+
+  std::cout << "File: " << path.string() << "\n"
+            << "  Format: " << lower(path.extension().string().substr(path.extension().string().empty() ? 0 : 1)) << "\n"
+            << "  Dimensions: " << img.cols << "x" << img.rows << "\n"
+            << "  Channels: " << img.channels() << "\n"
+            << "  Bit Depth: " << depth_str << "\n"
+            << "  Colorspace: " << cs_str << "\n"
+            << "  Chroma Format: " << chroma_str << "\n";
+}
+
+#ifdef IMG_BAT_WITH_EXIV2
+static void print_exiv2_info(const fs::path& path) {
+  try {
+    auto image = Exiv2::ImageFactory::open(path.string());
+    if (image.get()) {
+      image->readMetadata();
+      const auto& exif = image->exifData();
+      const auto& iptc = image->iptcData();
+      const auto& xmp = image->xmpData();
+
+      std::cout << "  Metadata Counts: EXIF (" << exif.count()
+                << "), IPTC (" << iptc.count()
+                << "), XMP (" << xmp.count() << ")\n";
+
+      auto print_tag = [&](const char* key, const char* label) {
+        auto it = exif.findKey(Exiv2::ExifKey(key));
+        if (it != exif.end()) {
+          std::cout << "  " << label << ": " << it->value().toString() << "\n";
+        }
+      };
+
+      print_tag("Exif.Image.Make", "Camera Make");
+      print_tag("Exif.Image.Model", "Camera Model");
+      print_tag("Exif.Photo.DateTimeOriginal", "Date/Time Original");
+      print_tag("Exif.Photo.ExposureTime", "Exposure Time");
+      print_tag("Exif.Photo.FNumber", "F-Number");
+      print_tag("Exif.Photo.ISOSpeedRatings", "ISO Speed");
+      print_tag("Exif.Photo.FocalLength", "Focal Length");
+
+      bool has_gps = false;
+      for (auto it = exif.begin(); it != exif.end(); ++it) {
+        if (it->groupName().find("GPS") != std::string::npos) {
+          has_gps = true;
+          break;
+        }
+      }
+      std::cout << "  GPS Data: " << (has_gps ? "Present" : "None") << "\n";
+    }
+  } catch (...) {}
+}
+#endif
+
+static void print_info_for_file(const fs::path& path) {
+  const auto ext = lower(path.extension().string());
+  if (ext == ".heic" || ext == ".heif") {
+#ifdef IMG_BAT_WITH_LIBHEIF
+    print_heif_info(path);
+#else
+    print_generic_info(path);
+#endif
+  } else {
+    print_generic_info(path);
+  }
+#ifdef IMG_BAT_WITH_EXIV2
+  print_exiv2_info(path);
+#endif
+  std::cout << "----------------------------------------\n";
+}
 
 static std::pair<int, int> parse_resize(const std::string& spec) {
   const auto separator = spec.find('x');
@@ -197,6 +442,7 @@ static void usage() {
             << "  -q, --quality N        JPEG/WebP quality (1-100; default 90)\n"
             << "  -t, --threads N        Worker threads (default: logical CPUs)\n"
             << "  -v, --version          Show version and exit\n"
+            << "      --info              Print image metainfo (colorspace, chroma, dimensions, etc.)\n"
             << "      --rotate DEG        90, 180, or 270\n"
             << "      --flip-h|--flip-v   Mirror image horizontally or vertically\n"
             << "      --grayscale         Convert to grayscale\n"
@@ -239,6 +485,7 @@ static Options parse_args(int argc, char** argv) {
     else if (arg == "--strip-all") opt.strip_all = true;
     else if (arg == "--overwrite") opt.overwrite = true;
     else if (arg == "--quiet") opt.quiet = true;
+    else if (arg == "--info") opt.info = true;
     else if (arg == "-v" || arg == "--version") {
       std::cout << "img_bat " << IMG_BAT_VERSION << '\n';
       std::exit(0);
@@ -627,12 +874,21 @@ static void print_progress(size_t completed, size_t total) {
 }
 
 int main(int argc, char** argv) {
+  // Initialize libheif plugins (registers libde265 decoder & x265 encoder)
+  heif_init(nullptr);
   try {
     const Options opt = parse_args(argc, argv);
     XmpRuntime xmp_runtime(opt.strip_all || opt.strip_gps);
     const auto started = std::chrono::steady_clock::now();
     const auto files = collect_files(opt);
     if (files.empty()) throw std::runtime_error("no input images found");
+    if (opt.info) {
+      for (const auto& file : files) {
+        print_info_for_file(file);
+      }
+      heif_deinit();
+      return 0;
+    }
     // Parallelize across files.  Keep OpenCV single-threaded per worker to
     // avoid an N workers × M OpenCV threads oversubscription.
     cv::setNumThreads(1);
@@ -676,9 +932,14 @@ int main(int argc, char** argv) {
       std::cout << "\nDone: " << succeeded << '/' << files.size() << " succeeded"
                 << " (elapsed: " << std::fixed << std::setprecision(2) << elapsed << " s)\n";
     }
+    heif_deinit();
     return succeeded == files.size() ? 0 : 1;
   } catch (const std::exception& error) {
     std::cerr << "Error: " << error.what() << "\nUse --help for usage.\n";
+    heif_deinit();
     return 2;
   }
+  // Cleanup when exiting
+  heif_deinit();
+  return 0;
 }
