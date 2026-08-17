@@ -154,9 +154,27 @@ jobs:
       # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
-      - name: Add vcpkg bin to PATH - Windows
+      - name: Check before running CTest - Windows
         if: runner.os == 'Windows'
-        run: echo "C:\vcpkg\installed\x64-windows\bin" >> $env:GITHUB_PATH
+        run: |
+          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
+
+          Write-Host "=== ALL libheif-related files ==="
+          Get-ChildItem $installed -Recurse -File |
+              Where-Object {
+                  $_.Name -match 'heif|de265|x265'
+              } |
+              Select-Object FullName, Length
+
+          Write-Host "=== plugin directories ==="
+          Get-ChildItem $installed -Recurse -Directory |
+              Where-Object {
+                  $_.FullName -match 'plugin'
+              } |
+              Select-Object FullName
+
+          Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
+          Write-Host $env:LIBHEIF_PLUGIN_PATH
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
