@@ -157,23 +157,18 @@ jobs:
         run: |
           $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
 
-          Write-Host "=== ALL libheif-related files ==="
+          Write-Host "=== All libheif-related files ==="
           Get-ChildItem $installed -Recurse -File |
               Where-Object {
                   $_.Name -match 'heif|de265|x265'
               } |
               Select-Object FullName, Length
 
-          Write-Host "=== plugin directories ==="
-          Get-ChildItem $installed -Recurse -Directory |
-              Where-Object {
-                  $_.FullName -match 'plugin'
-              } |
-              Select-Object FullName
+          Write-Host "=== Git check-attr, ls-files ==="
+          git check-attr -a -- ${{ github.workspace }}/tests/fixtures/src.heic
+          git ls-files --eol -- ${{ github.workspace }}/tests/fixtures/src.heic
+          (Get-FileHash ${{ github.workspace }}/tests/fixtures/src.heic -Algorithm SHA256).Hash
 
-          Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
-          Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
-          Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
