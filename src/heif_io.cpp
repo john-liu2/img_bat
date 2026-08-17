@@ -37,12 +37,18 @@ void check_heif(heif_error error, const std::string& action) {
 }
 
 cv::Mat read_heif(const fs::path& path) {
-  heif_context* ctx = heif_context_alloc();
-  if (!ctx) throw std::runtime_error("failed to allocate libheif context");
+  // Ensure libheif decoder plugins are initialized
+  heif_init(nullptr);
 
+  heif_context* ctx = heif_context_alloc();
+  if (!ctx) {
+    heif_deinit();
+    throw std::runtime_error("failed to allocate libheif context");
+  }
   heif_error err = heif_context_read_from_file(ctx, path.string().c_str(), nullptr);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
+    heif_deinit();
     throw std::runtime_error("cannot read HEIC: " + std::string(err.message));
   }
 
@@ -50,6 +56,7 @@ cv::Mat read_heif(const fs::path& path) {
   err = heif_context_get_primary_image_handle(ctx, &handle);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
+    heif_deinit();
     throw std::runtime_error("cannot get primary HEIC handle: " + std::string(err.message));
   }
 
@@ -66,6 +73,7 @@ cv::Mat read_heif(const fs::path& path) {
   heif_context_free(ctx);
 
   if (err.code != heif_error_Ok) {
+    heif_deinit();
     throw std::runtime_error("cannot decode HEIC: code=" + std::to_string(err.code) +
                              ", subcode=" + std::to_string(err.subcode) +
                              ", message=" + std::string(err.message));
@@ -81,6 +89,7 @@ cv::Mat read_heif(const fs::path& path) {
     std::memcpy(rgb.ptr(y), data + y * stride, width * 3);
   }
   heif_image_release(img);
+  heif_deinit();
 
   cv::Mat bgr;
   cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
