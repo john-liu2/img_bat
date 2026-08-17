@@ -12,7 +12,7 @@ import sys
 import tempfile
 import tomllib
 
-# Try importing and registering pillow-heif
+# PIL & pillow-heif: JPEG, PNG, HEIC support
 try:
     from PIL import Image
     import pillow_heif

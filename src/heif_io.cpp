@@ -37,41 +37,54 @@ void check_heif(heif_error error, const std::string& action) {
 }
 
 cv::Mat read_heif(const fs::path& path) {
-  heif_context* context = heif_context_alloc();
-  heif_image_handle* handle = nullptr;
-  heif_image* decoded = nullptr;
-  try {
-    check_heif(heif_context_read_from_file(context, path.string().c_str(), nullptr), "cannot read HEIC");
-    check_heif(heif_context_get_primary_image_handle(context, &handle), "cannot open HEIC image");
-    const bool alpha = heif_image_handle_has_alpha_channel(handle) != 0;
-    const auto chroma = alpha ? heif_chroma_interleaved_RGBA : heif_chroma_interleaved_RGB;
+  heif_context* ctx = heif_context_alloc();
+  if (!ctx) throw std::runtime_error("failed to allocate libheif context");
 
-    heif_error error = heif_decode_image(handle, &decoded, heif_colorspace_RGB, chroma, nullptr);
-    if (error.code != heif_error_Ok) {
-      throw std::runtime_error("cannot decode HEIC: code=" + std::to_string(static_cast<int>(error.code)) +
-                               ", subcode=" + std::to_string(static_cast<int>(error.subcode)) +
-                               ", message=" + std::string(error.message ? error.message : ""));
-    }
-
-    int stride = 0;
-    const uint8_t* pixels = heif_image_get_plane_readonly(decoded, heif_channel_interleaved, &stride);
-    if (!pixels) throw std::runtime_error("cannot access decoded HEIC pixels");
-    const int type = alpha ? CV_8UC4 : CV_8UC3;
-    cv::Mat rgb(heif_image_get_height(decoded, heif_channel_interleaved),
-                heif_image_get_width(decoded, heif_channel_interleaved), type,
-                const_cast<uint8_t*>(pixels), stride);
-    cv::Mat result;
-    cv::cvtColor(rgb, result, alpha ? cv::COLOR_RGBA2BGRA : cv::COLOR_RGB2BGR);
-    heif_image_release(decoded);
-    heif_image_handle_release(handle);
-    heif_context_free(context);
-    return result;
-  } catch (...) {
-    if (decoded) heif_image_release(decoded);
-    if (handle) heif_image_handle_release(handle);
-    heif_context_free(context);
-    throw;
+  heif_error err = heif_context_read_from_file(ctx, path.string().c_str(), nullptr);
+  if (err.code != heif_error_Ok) {
+    heif_context_free(ctx);
+    throw std::runtime_error("cannot read HEIC: " + std::string(err.message));
   }
+
+  heif_image_handle* handle = nullptr;
+  err = heif_context_get_primary_image_handle(ctx, &handle);
+  if (err.code != heif_error_Ok) {
+    heif_context_free(ctx);
+    throw std::runtime_error("cannot get primary HEIC handle: " + std::string(err.message));
+  }
+
+  heif_decoding_options* options = heif_decoding_options_alloc();
+  if (options) {
+    options->strict_decoding = 0; // Relax strict decoding checks for maximum compatibility
+  }
+
+  heif_image* img = nullptr;
+  err = heif_decode_image(handle, &img, heif_colorspace_RGB, heif_chroma_interleaved_24bit, options);
+
+  if (options) heif_decoding_options_free(options);
+  heif_image_handle_release(handle);
+  heif_context_free(ctx);
+
+  if (err.code != heif_error_Ok) {
+    throw std::runtime_error("cannot decode HEIC: code=" + std::to_string(err.code) +
+                             ", subcode=" + std::to_string(err.subcode) +
+                             ", message=" + std::string(err.message));
+  }
+
+  int width = heif_image_get_width(img, heif_channel_interleaved);
+  int height = heif_image_get_height(img, heif_channel_interleaved);
+  int stride = 0;
+  const uint8_t* data = heif_image_get_plane_readonly(img, heif_channel_interleaved, &stride);
+
+  cv::Mat rgb(height, width, CV_8UC3);
+  for (int y = 0; y < height; ++y) {
+    std::memcpy(rgb.ptr(y), data + y * stride, width * 3);
+  }
+  heif_image_release(img);
+
+  cv::Mat bgr;
+  cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
+  return bgr;
 }
 
 void print_heif_info(const fs::path& path) {
