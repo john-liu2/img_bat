@@ -174,7 +174,8 @@ jobs:
               Select-Object FullName
 
           Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
-          Write-Host $env:LIBHEIF_PLUGIN_PATH
+          Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
+          Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
 
       - name: Test
         working-directory: ${{ github.workspace }}/build

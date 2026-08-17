@@ -5,8 +5,6 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
-import os
-import sys
 import shutil
 import subprocess
 import tempfile
@@ -194,12 +192,6 @@ def main() -> None:
     )
     parser.add_argument("--exiv2")
     args = parser.parse_args()
-    # Set LIBHEIF_PLUGIN_PATH to binary directory if on Windows
-    if sys.platform == "win32" and args.binary:
-        binary_dir = os.path.dirname(os.path.abspath(args.binary))
-        plugin_dir = os.path.join(binary_dir, "libheif")
-        if os.path.exists(plugin_dir):
-            os.environ["LIBHEIF_PLUGIN_PATH"] = plugin_dir
 
     with tempfile.TemporaryDirectory() as tmp:
         directory = Path(tmp)

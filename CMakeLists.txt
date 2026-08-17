@@ -74,13 +74,6 @@ if(BUILD_TESTING)
   add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode version)
 
-  # Pass LIBHEIF_PLUGIN_PATH to CTest on Windows to find libde265.dll
-  if(WIN32 AND IMG_BAT_ENABLE_HEIC)
-    set_tests_properties(cli-heic PROPERTIES
-      ENVIRONMENT "LIBHEIF_PLUGIN_PATH=$<TARGET_FILE_DIR:img_bat>"
-    )
-  endif()
-
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
     if(EXIV2_EXECUTABLE)
