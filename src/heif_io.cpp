@@ -1,6 +1,10 @@
 #include "heif_io.hpp"
 
 #ifdef IMG_BAT_WITH_LIBHEIF
+#include <libheif/heif.h>
+#include <algorithm>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
@@ -37,7 +41,24 @@ void check_heif(heif_error error, const std::string& action) {
 }
 
 cv::Mat read_heif(const fs::path& path) {
-  // Ensure libheif decoder plugins are initialized
+  // 1. Read binary file into memory using std::ifstream (handles Windows wchar_t paths natively)
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    throw std::runtime_error("cannot open HEIC file: " + path.string());
+  }
+
+  const std::streamsize size = file.tellg();
+  if (size <= 0) {
+    throw std::runtime_error("HEIC file is empty: " + path.string());
+  }
+
+  file.seekg(0, std::ios::beg);
+  std::vector<uint8_t> buffer(static_cast<size_t>(size));
+  if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+    throw std::runtime_error("failed to read HEIC file content: " + path.string());
+  }
+
+  // 2. Initialize libheif
   heif_init(nullptr);
 
   heif_context* ctx = heif_context_alloc();
@@ -45,11 +66,23 @@ cv::Mat read_heif(const fs::path& path) {
     heif_deinit();
     throw std::runtime_error("failed to allocate libheif context");
   }
-  heif_error err = heif_context_read_from_file(ctx, path.string().c_str(), nullptr);
+
+  // 3. Read HEIF data from memory buffer
+  heif_error err = heif_context_read_from_memory_without_copy(ctx, buffer.data(), buffer.size(), nullptr);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
     heif_deinit();
-    throw std::runtime_error("cannot read HEIC: " + std::string(err.message));
+
+    // Format first 16 bytes for diagnostic logging if header is corrupt
+    std::string header_hex;
+    for (size_t i = 0; i < std::min<size_t>(buffer.size(), 16); ++i) {
+      char hex[8];
+      snprintf(hex, sizeof(hex), "%02X ", buffer[i]);
+      header_hex += hex;
+    }
+
+    throw std::runtime_error("cannot read HEIC (size: " + std::to_string(buffer.size()) +
+                             " bytes, header: [" + header_hex + "]): " + std::string(err.message));
   }
 
   heif_image_handle* handle = nullptr;
@@ -62,7 +95,7 @@ cv::Mat read_heif(const fs::path& path) {
 
   heif_decoding_options* options = heif_decoding_options_alloc();
   if (options) {
-    options->strict_decoding = 0; // Relax strict decoding checks for maximum compatibility
+    options->strict_decoding = 0;
   }
 
   heif_image* img = nullptr;
