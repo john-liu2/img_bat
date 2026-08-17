@@ -23,7 +23,6 @@ jobs:
 
     steps:
       - name: Show Matrix & Runner
-        shell: bash
         run: |
           echo "matrix.os = ${{ matrix.os }}"
           echo "runner.os = $RUNNER_OS"
@@ -67,7 +66,6 @@ jobs:
 
       - name: Configure CMake - macOS/Linux
         if: runner.os != 'Windows'
-        shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
             CXX=clang++
@@ -176,10 +174,10 @@ jobs:
           Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
           Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
 
-      - name: Install Python dependencies for Test
-        run: |
-          python3 -m pip install --upgrade pip
-          python3 -m pip install -r ${{ github.workspace }}/tests/requirements.txt
+      # - name: Install Python dependencies for Test
+      #   run: |
+      #     python3 -m pip install --upgrade pip
+      #     python3 -m pip install -r ${{ github.workspace }}/tests/requirements.txt
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
