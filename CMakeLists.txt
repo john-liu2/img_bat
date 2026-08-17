@@ -75,6 +75,12 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  # Custom command/target to install Python test dependencies
+  add_custom_target(
+    install-test-deps
+    COMMAND ${Python3_EXECUTABLE} -m pip install -r ${CMAKE_CURRENT_SOURCE_DIR}/tests/requirements.txt
+    COMMENT "Installing Python test requirements (Pillow & pillow-heif)..."
+  )
   add_test(NAME cli-heic COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode heic)
   add_test(NAME cli-info COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
@@ -83,6 +89,8 @@ if(BUILD_TESTING)
            --binary $<TARGET_FILE:img_bat> --mode status)
   add_test(NAME cli-version COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
            --binary $<TARGET_FILE:img_bat> --mode version)
+  add_test(NAME cli-transformation COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_cli.py
+           --binary $<TARGET_FILE:img_bat> --mode transformation)
 
   if(Exiv2_FOUND)
     find_program(EXIV2_EXECUTABLE exiv2)
