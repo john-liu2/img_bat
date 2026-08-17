@@ -1,4 +1,4 @@
-# This workflow builds a CMake C/C++ project on macOS, Windows, and Linux.
+# Build a CMake C/C++ project on macOS, Windows, and Linux.
 name: CMake Multi-Platform CI
 
 on:
@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
         build-type: [Release]
 
     runs-on: ${{ matrix.os }}
