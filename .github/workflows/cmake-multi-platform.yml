@@ -175,11 +175,6 @@ jobs:
           Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
           Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
 
-      # - name: Install Python dependencies for Test
-      #   run: |
-      #     python3 -m pip install --upgrade pip
-      #     python3 -m pip install -r ${{ github.workspace }}/tests/requirements.txt
-
       - name: Test
         working-directory: ${{ github.workspace }}/build
         # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
