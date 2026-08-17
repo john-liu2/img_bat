@@ -1,13 +1,23 @@
 cmake_minimum_required(VERSION 3.26)
 
-project(img_bat VERSION 0.1.1 LANGUAGES CXX)
+project(img_bat VERSION 0.2.0 LANGUAGES CXX)
 
 option(IMG_BAT_ENABLE_METADATA "Enable metadata editing with Exiv2" ON)
 option(IMG_BAT_ENABLE_HEIC "Enable HEIC/HEIF input and output with libheif" ON)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgcodecs imgproc)
 
-add_executable(img_bat src/main.cpp)
+set(SOURCES
+    src/options.cpp
+    src/metadata.cpp
+    src/heif_io.cpp
+    src/image_processor.cpp
+    src/main.cpp
+)
+add_executable(img_bat ${SOURCES})
+# Tell CMake where to look for header files (.hpp)
+target_include_directories(img_bat PRIVATE include)
+
 target_compile_features(img_bat PRIVATE cxx_std_17)
 target_link_libraries(img_bat PRIVATE opencv_core opencv_imgcodecs opencv_imgproc)
 target_compile_definitions(img_bat PRIVATE IMG_BAT_VERSION="${PROJECT_VERSION}")

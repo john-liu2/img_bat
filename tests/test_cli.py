@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import argparse
+import os
 import shutil
 import subprocess
 import tempfile
@@ -36,6 +37,72 @@ def write_jpeg(directory: Path) -> Path:
     source = directory / "source.jpg"
     shutil.copyfile(JPEG_FIXTURE, source)
     return source
+
+
+def get_exiv2_tags(exiv2_bin: str, file_path: Path) -> list[str]:
+    """Extract EXIF/XMP tag keys present in a file using exiv2."""
+    if not exiv2_bin or not os.path.exists(exiv2_bin):
+        return []
+    res = subprocess.run([exiv2_bin, "-pa", str(file_path)],
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        return []
+    lines = res.stdout.strip().splitlines()
+    tags = []
+    for line in lines:
+        parts = line.split()
+        if parts:
+            tags.append(parts[0])
+    return tags
+
+
+def test_strip_metadata(img_bat_bin: str, exiv2_bin: str = None):
+    """Tests --strip-gps and --strip-all on JPEG and HEIC fixtures."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        fixtures = [
+            ("jpg", JPEG_FIXTURE),
+            ("heic", HEIC_FIXTURE),
+        ]
+
+        for fmt, src in fixtures:
+            if not src.exists():
+                print(f"Skipping {fmt.upper()} test: fixture not found at {src}")
+                continue
+
+            # -------------------------------------------------------------
+            # Test 1: --strip-gps
+            # -------------------------------------------------------------
+            target_gps = tmp_path / f"test_gps.{fmt}"
+            shutil.copy(src, target_gps)
+
+            print(f"Testing --strip-gps on {target_gps.name}...")
+            run(img_bat_bin, "-i", str(target_gps), "--strip-gps", "--overwrite")
+
+            if exiv2_bin:
+                tags = get_exiv2_tags(exiv2_bin, target_gps)
+                has_gps = any("GPS" in tag for tag in tags)
+                assert not has_gps, f"GPS tags still present in {target_gps.name} after --strip-gps"
+                print(f"  [PASS] {fmt.upper()} --strip-gps verified (no GPS tags found)")
+
+            # -------------------------------------------------------------
+            # Test 2: --strip-all
+            # -------------------------------------------------------------
+            target_all = tmp_path / f"test_all.{fmt}"
+            shutil.copy(src, target_all)
+
+            print(f"Testing --strip-all on {target_all.name}...")
+            run(img_bat_bin, "-i", str(target_all), "--strip-all", "--overwrite")
+
+            if exiv2_bin:
+                tags = get_exiv2_tags(exiv2_bin, target_all)
+                assert len(tags) == 0, f"Metadata tags ({len(tags)}) still present in {target_all.name} after --strip-all"
+                print(f"  [PASS] {fmt.upper()} --strip-all verified (0 tags remaining)")
+
+            # Check that output file is non-empty and readable
+            assert target_all.stat().st_size > 0, f"{target_all.name} became empty"
+            assert target_gps.stat().st_size > 0, f"{target_gps.name} became empty"
 
 
 def test_heic(binary: str, directory: Path) -> None:
@@ -200,6 +267,7 @@ def main() -> None:
         elif args.mode == "metadata":
             assert args.exiv2
             test_metadata(args.binary, args.exiv2, directory)
+            test_strip_metadata(args.binary, args.exiv2)
         elif args.mode == "status":
             test_status(args.binary, directory)
         elif args.mode == "info":
