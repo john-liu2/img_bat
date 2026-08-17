@@ -8,12 +8,27 @@ import argparse
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import tomllib
+
+# PIL & pillow-heif: JPEG, PNG, HEIC support
+try:
+    from PIL import Image
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    HAS_HEIC_SUPPORT = True
+except ImportError:
+    HAS_HEIC_SUPPORT = False
+
 
 HERE = Path(__file__).resolve().parent
 JPEG_FIXTURE = HERE / "fixtures/source.jpg"
 HEIC_FIXTURE = HERE / "fixtures/src.heic"
+fixture_lst = [
+    ("jpg", JPEG_FIXTURE),
+    ("heic", HEIC_FIXTURE),
+]
 
 
 def pkg_version() -> str:
@@ -56,17 +71,127 @@ def get_exiv2_tags(exiv2_bin: str, file_path: Path) -> list[str]:
     return tags
 
 
-def test_strip_metadata(img_bat_bin: str, exiv2_bin: str = None):
-    """Tests --strip-gps and --strip-all on JPEG and HEIC fixtures."""
+def get_image_info(path: Path) -> tuple[int, int, int]:
+    """
+    Returns (width, height, channels) of an image across platforms.
+    Supports JPG, PNG, HEIC, etc. via Pillow + pillow-heif.
+    """
+    try:
+        with Image.open(path) as img:
+            w, h = img.size
+            channels = 1 if img.mode in ("L", "1", "P") else len(img.getbands())
+            return w, h, channels
+    except Exception as e:
+        print(f"Warning: Failed to inspect {path} using Pillow: {e}", file=sys.stderr)
+        return 0, 0, 0
+
+def test_transformation(img_bat_bin: str):
+    """Tests all CLI image transformation options."""
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
-        fixtures = [
-            ("jpg", JPEG_FIXTURE),
-            ("heic", HEIC_FIXTURE),
-        ]
+        # 1. Test --rotate DEG (90, 180, 270)
+        for fmt, src in fixture_lst:
+            orig_w, orig_h, _ = get_image_info(src)
+            for deg in (90, 180, 270):
+                target = tmp_path / f"test_rotate_{deg}.{fmt}"
+                shutil.copy(src, target)
+                print(f"Testing {fmt.upper()} --rotate {deg}...")
+                run(img_bat_bin, "-i", str(target), "--rotate", str(deg), "--overwrite")
+                assert target.stat().st_size > 0, f"Rotated file ({deg}°) is empty"
 
-        for fmt, src in fixtures:
+                if orig_w > 0 and orig_h > 0:
+                    w, h, _ = get_image_info(target)
+                    if deg in (90, 270):
+                        assert (w, h) == (orig_h, orig_w), f"Expected dimensions ({orig_h}x{orig_w}), got ({w}x{h})"
+                    else:
+                        assert (w, h) == (orig_w, orig_h), f"Expected dimensions ({orig_w}x{orig_h}), got ({w}x{h})"
+                print(f"  [PASS] {fmt.upper()} --rotate {deg}")
+
+        # 2. Test --flip-h and --flip-v
+        for fmt, src in fixture_lst:
+            for flag in ("--flip-h", "--flip-v"):
+                target = tmp_path / f"test_{flag.strip('-')}.{fmt}"
+                shutil.copy(src, target)
+                print(f"Testing {fmt.upper()} {flag}...")
+                run(img_bat_bin, "-i", str(target), flag, "--overwrite")
+                assert target.stat().st_size > 0, f"Flipped file ({flag}) is empty"
+                print(f"  [PASS] {fmt.upper()} {flag}")
+
+        # 3. Test --grayscale
+        for fmt, src in fixture_lst:
+            orig_w, orig_h, _ = get_image_info(src)
+            target_gray = tmp_path / f"test_grayscale.{fmt}"
+            shutil.copy(src, target_gray)
+            print(f"Testing {fmt.upper()} --grayscale...")
+            run(img_bat_bin, "-i", str(target_gray), "--grayscale", "--overwrite")
+            assert target_gray.stat().st_size > 0, "Grayscale file is empty"
+
+            if orig_w > 0 and orig_h > 0:
+                _, _, channels = get_image_info(target_gray)
+                # JPEG might save single channel or 3 identical channels depending on encoder
+                assert channels in (1, 3), f"Unexpected channel count: {channels}"
+            print(f"  [PASS] {fmt.upper()} --grayscale")
+
+        # 4. Test --brightness N
+        for fmt, src in fixture_lst:
+            for b in ("15.0", "-15.0"):
+                target_b = tmp_path / f"test_brightness_{b}.{fmt}"
+                shutil.copy(src, target_b)
+                print(f"Testing {fmt.upper()} --brightness {b}...")
+                run(img_bat_bin, "-i", str(target_b), "--brightness", b, "--overwrite")
+                assert target_b.stat().st_size > 0, "Brightness adjusted file is empty"
+                print(f"  [PASS] {fmt.upper()} --brightness {b}")
+
+        # 5. Test --contrast N
+        for fmt, src in fixture_lst:
+            for c in ("0.8", "1.3"):
+                target_c = tmp_path / f"test_contrast_{c}.{fmt}"
+                shutil.copy(src, target_c)
+                print(f"Testing {fmt.upper()} --contrast {c}...")
+                run(img_bat_bin, "-i", str(target_c), "--contrast", c, "--overwrite")
+                assert target_c.stat().st_size > 0, "Contrast adjusted file is empty"
+                print(f"  [PASS] {fmt.upper()} --contrast {c}")
+
+        # 6. Test --border PX
+        for fmt, src in fixture_lst:
+            orig_w, orig_h, _ = get_image_info(src)
+            border_px = 12
+            target_bd = tmp_path / f"test_border.{fmt}"
+            shutil.copy(src, target_bd)
+            print(f"Testing {fmt.upper()} --border {border_px}...")
+            run(img_bat_bin, "-i", str(target_bd), "--border", str(border_px), "--overwrite")
+            assert target_bd.stat().st_size > 0, "Border file is empty"
+
+            if orig_w > 0 and orig_h > 0:
+                w, h, _ = get_image_info(target_bd)
+                expected_w = orig_w + (border_px * 2)
+                expected_h = orig_h + (border_px * 2)
+                assert (w, h) == (expected_w, expected_h), f"Expected border dimensions ({expected_w}x{expected_h}), got ({w}x{h})"
+            print(f"  [PASS] {fmt.upper()} --border {border_px}")
+
+        # 7. Test --resize WxH
+        for fmt, src in fixture_lst:
+            orig_w, orig_h, _ = get_image_info(src)
+            target_sz = tmp_path / f"test_resize.{fmt}"
+            shutil.copy(src, target_sz)
+            print(f"Testing {fmt.upper()} --resize 120x80...")
+            run(img_bat_bin, "-i", str(target_sz), "--resize", "120x80", "--overwrite")
+            assert target_sz.stat().st_size > 0, "Resized file is empty"
+
+            if orig_w > 0 and orig_h > 0:
+                w, h, _ = get_image_info(target_sz)
+                assert (w, h) == (120, 80), f"Expected resized dimensions (120x80), got ({w}x{h})"
+            print(f"  [PASS] {fmt.upper()} --resize 120x80")
+
+
+def test_strip_metadata(img_bat_bin: str, exiv2_bin: str = None):
+    """Tests --strip-gps and --strip-all on JPEG and HEIC"""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        for fmt, src in fixture_lst:
             if not src.exists():
                 print(f"Skipping {fmt.upper()} test: fixture not found at {src}")
                 continue
@@ -137,14 +262,14 @@ def test_heic(binary: str, directory: Path) -> None:
     run(
         binary,
         "--input",
-        str(heic),
+        str(HEIC_FIXTURE),
         "--format",
         "png",
         "--output",
         str(png_dir),
         # "--quiet",  # not quiet to get more info if fails
     )
-    assert (png_dir / "source.png").read_bytes().startswith(
+    assert (png_dir / "src.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
     ), "HEIC input did not decode to PNG"
 
@@ -254,7 +379,7 @@ def main() -> None:
     parser.add_argument("--binary", required=True)
     parser.add_argument(
         "--mode",
-        choices=("heic", "metadata", "status", "info", "version"),
+        choices=("heic", "metadata", "status", "info", "version", "transformation"),
         required=True,
     )
     parser.add_argument("--exiv2")
@@ -272,6 +397,8 @@ def main() -> None:
             test_status(args.binary, directory)
         elif args.mode == "info":
             test_info(args.binary, directory)
+        elif args.mode == "transformation":
+            test_transformation(args.binary)
         else:
             test_version(args.binary)
 
