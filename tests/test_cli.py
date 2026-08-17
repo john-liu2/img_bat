@@ -14,6 +14,10 @@ import tomllib
 HERE = Path(__file__).resolve().parent
 JPEG_FIXTURE = HERE / "fixtures/source.jpg"
 HEIC_FIXTURE = HERE / "fixtures/src.heic"
+fixture_lst = [
+    ("jpg", JPEG_FIXTURE),
+    ("heic", HEIC_FIXTURE),
+]
 
 
 def pkg_version() -> str:
@@ -57,16 +61,11 @@ def get_exiv2_tags(exiv2_bin: str, file_path: Path) -> list[str]:
 
 
 def test_strip_metadata(img_bat_bin: str, exiv2_bin: str = None):
-    """Tests --strip-gps and --strip-all on JPEG and HEIC fixtures."""
+    """Tests --strip-gps and --strip-all on JPEG and HEIC"""
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
 
-        fixtures = [
-            ("jpg", JPEG_FIXTURE),
-            ("heic", HEIC_FIXTURE),
-        ]
-
-        for fmt, src in fixtures:
+        for fmt, src in fixture_lst:
             if not src.exists():
                 print(f"Skipping {fmt.upper()} test: fixture not found at {src}")
                 continue
@@ -137,14 +136,14 @@ def test_heic(binary: str, directory: Path) -> None:
     run(
         binary,
         "--input",
-        str(heic),
+        str(HEIC_FIXTURE),
         "--format",
         "png",
         "--output",
         str(png_dir),
         # "--quiet",  # not quiet to get more info if fails
     )
-    assert (png_dir / "source.png").read_bytes().startswith(
+    assert (png_dir / "src.png").read_bytes().startswith(
         b"\x89PNG\r\n\x1a\n"
     ), "HEIC input did not decode to PNG"
 
