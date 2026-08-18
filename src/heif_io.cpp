@@ -40,6 +40,78 @@ void check_heif(heif_error error, const std::string& action) {
   }
 }
 
+// debug
+void diagnose_heic_decode(const char* filename)
+{
+    std::cerr << "\n=== direct libheif decode ===\n";
+    std::cerr << "file: " << filename << "\n";
+
+    heif_context* ctx = heif_context_alloc();
+    if (!ctx) {
+        std::cerr << "heif_context_alloc: FAILED\n";
+        return;
+    }
+
+    heif_error err = heif_context_read_from_file(
+        ctx,
+        filename,
+        nullptr
+    );
+    std::cerr << "read_from_file:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code != heif_error_Ok) {
+        heif_context_free(ctx);
+        return;
+    }
+
+    int image_count = heif_context_get_number_of_top_level_images(ctx);
+    std::cerr << "top-level images: " << image_count << "\n";
+
+    heif_image_handle* handle = nullptr;
+    err = heif_context_get_primary_image_handle(ctx, &handle);
+    std::cerr << "get_primary_image_handle:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code != heif_error_Ok) {
+        heif_context_free(ctx);
+        return;
+    }
+    std::cerr << "image dimensions: "
+              << heif_image_handle_get_width(handle)
+              << " x "
+              << heif_image_handle_get_height(handle)
+              << "\n";
+
+    heif_image* image = nullptr;
+    err = heif_decode_image(
+        handle,
+        &image,
+        heif_colorspace_RGB,
+        heif_chroma_interleaved_RGB,
+        nullptr
+    );
+    std::cerr << "decode_image:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code == heif_error_Ok) {
+        std::cerr << "DIRECT DECODE: SUCCESS\n";
+        heif_image_release(image);
+    } else {
+        std::cerr << "DIRECT DECODE: FAILED\n";
+    }
+
+    heif_image_handle_release(handle);
+    heif_context_free(ctx);
+    std::cerr << "=== end direct libheif decode ===\n";
+}
+
 cv::Mat read_heif(const fs::path& path) {
   // 1. Open and read the raw binary file using std::ifstream (handles Windows wchar_t paths)
   std::ifstream file(path, std::ios::binary | std::ios::ate);
