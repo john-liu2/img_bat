@@ -147,8 +147,12 @@ jobs:
           Write-Host "=== LIBHEIF_PLUGIN_PATH ==="
           Write-Host $env:LIBHEIF_PLUGIN_PATH
 
-          # heif-info tests/fixtures/src.heic
-          # heif-convert tests/fixtures/src.heic "$env:TEMP\src.png"
+          Write-Host "=== inspect portfile.cmake ==="
+          Select-String -Path vcpkg\ports\libheif\portfile.cmake `
+            -Pattern "de265|HEVC|decoder|plugin|WITH_LIBDE265"
+          Select-String -Path vcpkg\ports\libheif\*.cmake `
+            -Pattern "de265|HEVC|decoder|plugin"
+
 
           $manifestDir = "$env:GITHUB_WORKSPACE\windows"
           $vcpkgExe = "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe"
@@ -188,12 +192,14 @@ jobs:
           Write-Host "SHA-256: $((Get-FileHash tests/fixtures/src.heic -Algorithm SHA256).Hash.ToLower())"
 
           $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
-          Write-Host "=== All libheif-related files ==="
+          Write-Host "=== HEIF/HEVC binaries ==="
           Get-ChildItem $installed -Recurse -File |
               Where-Object {
-                  $_.Name -match 'heif|de265|x265'
+                  $_.Name -match "(heif|de265)" -and
+                  $_.Extension -in ".dll", ".lib"
               } |
-              Select-Object FullName, Length
+              Select-Object FullName
+
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
