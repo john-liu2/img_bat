@@ -34,6 +34,7 @@ jobs:
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
+          echo "SHA-256: $(shasum -a 256 tests/fixtures/src.heic | cut -d' ' -f1)"
           brew untap aws/tap 2>/dev/null || true
           brew install libde265 libheif pkg-config opencv exiv2
           heif-info --version || true
@@ -42,6 +43,8 @@ jobs:
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
+          echo "SHA-256: $(sha256sum tests/fixtures/src.heic | cut -d' ' -f1)"
+
           sudo apt-get update
           sudo apt-get install -y \
             libopencv-dev \
@@ -152,23 +155,24 @@ jobs:
       # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
+      - name: Check tests/fixtures directory
+        run: |
+          echo "=== Git check-attr, ls-files ==="
+          git check-attr -a -- ${{ github.workspace }}/tests/fixtures/src.heic
+          git ls-files --eol -- ${{ github.workspace }}/tests/fixtures/src.heic
+
       - name: Check before running CTest - Windows
         if: runner.os == 'Windows'
         run: |
-          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
+          Write-Host "SHA-256: $((Get-FileHash tests/fixtures/src.heic -Algorithm SHA256).Hash)"
 
+          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
           Write-Host "=== All libheif-related files ==="
           Get-ChildItem $installed -Recurse -File |
               Where-Object {
                   $_.Name -match 'heif|de265|x265'
               } |
               Select-Object FullName, Length
-
-          Write-Host "=== Git check-attr, ls-files ==="
-          git check-attr -a -- ${{ github.workspace }}/tests/fixtures/src.heic
-          git ls-files --eol -- ${{ github.workspace }}/tests/fixtures/src.heic
-          (Get-FileHash ${{ github.workspace }}/tests/fixtures/src.heic -Algorithm SHA256).Hash
-
 
       - name: Test
         working-directory: ${{ github.workspace }}/build
