@@ -72,7 +72,9 @@ cv::Mat read_heif(const fs::path& path) {
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
     heif_deinit();
-    throw std::runtime_error("cannot read HEIC from memory: " + std::string(err.message));
+    throw std::runtime_error("cannot read HEIC from memory: code=" + std::to_string(err.code) +
+                             ", subcode=" + std::to_string(err.subcode) +
+                             ", message=" + std::string(err.message));
   }
 
   heif_image_handle* handle = nullptr;
@@ -80,7 +82,9 @@ cv::Mat read_heif(const fs::path& path) {
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
     heif_deinit();
-    throw std::runtime_error("cannot get primary HEIC handle: " + std::string(err.message));
+    throw std::runtime_error("cannot get primary HEIC handle: code=" + std::to_string(err.code) +
+                             ", subcode=" + std::to_string(err.subcode) +
+                             ", message=" + std::string(err.message));
   }
 
   heif_decoding_options* options = heif_decoding_options_alloc();

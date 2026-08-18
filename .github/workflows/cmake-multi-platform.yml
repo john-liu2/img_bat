@@ -130,6 +130,23 @@ jobs:
       - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
         run: |
+          Write-Host "=== Searching for libheif tools ==="
+          Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -in @("heif-info.exe", "heif-convert.exe", "heif-dec.exe") } |
+              Select-Object -ExpandProperty FullName
+
+          Get-ChildItem -Path build\vcpkg_installed -Recurse -File -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match "^heif-(info|convert|dec)\.exe$" } |
+          Select-Object -ExpandProperty FullName
+
+          Write-Host "=== libde265/libheif DLLs ==="
+          Get-ChildItem -Path build\vcpkg_installed\x64-windows -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "^(lib)?(heif|de265).*\.dll$" } |
+              Select-Object FullName
+
+          Write-Host "=== LIBHEIF_PLUGIN_PATH ==="
+          Write-Host $env:LIBHEIF_PLUGIN_PATH
+
           heif-info tests/fixtures/src.heic
           heif-convert tests/fixtures/src.heic "$env:TEMP\src.png"
 

@@ -282,6 +282,18 @@ def test_heic(binary: str, directory: Path) -> None:
         f"HEIC --info output missing 4:2:0 chroma metadata. Got output:\n{info_out}"
     )
 
+    generated_png_dir = directory / "generated-png"
+    run(
+        binary,
+        "--input",
+        str(heic),
+        "--format",
+        "png",
+        "--output",
+        str(generated_png_dir),
+    )
+    assert (generated_png_dir / "source.png").exists()
+
     run(
         binary,
         "--input",
