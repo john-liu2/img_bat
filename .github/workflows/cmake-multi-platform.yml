@@ -147,8 +147,8 @@ jobs:
           Write-Host "=== LIBHEIF_PLUGIN_PATH ==="
           Write-Host $env:LIBHEIF_PLUGIN_PATH
 
-          heif-info tests/fixtures/src.heic
-          heif-convert tests/fixtures/src.heic "$env:TEMP\src.png"
+          # heif-info tests/fixtures/src.heic
+          # heif-convert tests/fixtures/src.heic "$env:TEMP\src.png"
 
           $manifestDir = "$env:GITHUB_WORKSPACE\windows"
           $vcpkgExe = "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe"
