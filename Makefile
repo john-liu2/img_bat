@@ -36,7 +36,7 @@ test: debug
 	ctest --test-dir $(DEBUG_BUILD) --output-on-failure
 
 release:
-	$(CMAKE) -S . -B $(RELEASE_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+	$(CMAKE) -S . -B $(RELEASE_BUILD) -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
 	$(CMAKE) --build $(RELEASE_BUILD) --parallel $(BUILD_JOBS)
 
 wheel: release
