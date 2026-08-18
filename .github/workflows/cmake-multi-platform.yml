@@ -84,7 +84,7 @@ jobs:
             -S "${{ github.workspace }}" \
             -B "${{ github.workspace }}/build" \
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
-            -DBUILD_TESTING=ON
+            -DBUILD_TESTING=ON \
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_STANDARD=17 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
