@@ -71,6 +71,9 @@ jobs:
       - name: Configure CMake - macOS/Linux
         if: runner.os != 'Windows'
         run: |
+          heif-info tests/fixtures/src.heic
+          heif-convert tests/fixtures/src.heic /tmp/src.png
+
           if [ "$RUNNER_OS" = "macOS" ]; then
             CXX=clang++
           else
@@ -88,7 +91,6 @@ jobs:
 
       - name: Diagnose Visual Studio
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
@@ -127,8 +129,10 @@ jobs:
 
       - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
+          heif-info tests/fixtures/src.heic
+          heif-convert tests/fixtures/src.heic "$env:TEMP\src.png"
+
           $manifestDir = "$env:GITHUB_WORKSPACE\windows"
           $vcpkgExe = "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe"
           $vcpkgInstalled = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
@@ -164,7 +168,7 @@ jobs:
       - name: Check before running CTest - Windows
         if: runner.os == 'Windows'
         run: |
-          Write-Host "SHA-256: $((Get-FileHash tests/fixtures/src.heic -Algorithm SHA256).Hash)"
+          Write-Host "SHA-256: $((Get-FileHash tests/fixtures/src.heic -Algorithm SHA256).Hash.ToLower())"
 
           $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
           Write-Host "=== All libheif-related files ==="
