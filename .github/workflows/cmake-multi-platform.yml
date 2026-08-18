@@ -202,8 +202,18 @@ jobs:
               } |
               Select-Object FullName
 
-
-      - name: Test
+      - name: Test - Windows
+        if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build
         # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
-        run: ctest --build-config ${{ matrix.build-type }} --output-on-failure
+        run: |
+          ${{ matrix.build-type }}/img_bat.exe --input tests/fixtures/src.heic --format png --output tmp/src.png
+          ctest --build-config ${{ matrix.build-type }} --output-on-failure
+
+      - name: Test - macOS/Linux
+        if: runner.os != 'Windows'
+        working-directory: ${{ github.workspace }}/build
+        # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
+        run: |
+          ${{ matrix.build-type }}/img_bat --input tests/fixtures/src.heic --format png --output /tmp/src.png
+          ctest --build-config ${{ matrix.build-type }} --output-on-failure
