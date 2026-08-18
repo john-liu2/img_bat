@@ -209,7 +209,7 @@ jobs:
           Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
               Where-Object { $_.Name -eq "img_bat.exe" } |
               Select-Object -ExpandProperty FullName
-          ${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp/src.png
+          ${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png
           ctest --build-config ${{ matrix.build-type }} --output-on-failure
 
       - name: Test - macOS/Linux
@@ -218,5 +218,5 @@ jobs:
         # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
         run: |
           find . -name "img_bat" -type f -exec echo "=== File img_bat: {}" \;
-          ./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output /tmp/src.png
+          ./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png
           ctest --build-config ${{ matrix.build-type }} --output-on-failure
