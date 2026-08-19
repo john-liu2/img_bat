@@ -111,7 +111,7 @@ void process_one(const fs::path& input, const Options& opt) {
   const bool is_heif = lower(input.extension().string()) == ".heic" || lower(input.extension().string()) == ".heif";
 
   // Fast-Path Container Metadata Stripping (In-place or metadata-only)
-if (output == input && !transform_requested && (opt.strip_all || opt.strip_gps)) {
+  if (output == input && !transform_requested && (opt.strip_all || opt.strip_gps)) {
     if (is_heif) {
       if (strip_heif_metadata_losslessly(input, opt.strip_all, opt.strip_gps)) return;
       // Fallback to decode/re-encode pipeline if binary BMFF structure parsing fails
