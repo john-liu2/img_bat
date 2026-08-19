@@ -11,6 +11,8 @@ namespace fs = std::filesystem;
 
 void check_heif(heif_error error, const std::string& action);
 cv::Mat read_heif(const fs::path& path);
+// debug
+void diagnose_heic_decode(const char* filename);
 void print_heif_info(const fs::path& path);
 void write_heif(const fs::path& path, const cv::Mat& input, int quality,
                 const Metadata& metadata, bool strip_all, bool strip_gps);

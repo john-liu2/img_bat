@@ -1,4 +1,4 @@
-# This workflow builds a CMake C/C++ project on macOS, Windows, and Linux.
+# Build a CMake C/C++ project on macOS, Windows, and Linux.
 name: CMake Multi-Platform CI
 
 on:
@@ -17,7 +17,7 @@ jobs:
       max-parallel: 3
       matrix:
         os: [macos-latest, ubuntu-latest]
-        build-type: [Release]
+        build-type: [Debug]
 
     runs-on: ${{ matrix.os }}
 
@@ -34,6 +34,7 @@ jobs:
       - name: Install dependencies - macOS
         if: runner.os == 'macOS'
         run: |
+          echo "SHA-256: $(shasum -a 256 tests/fixtures/src.heic | cut -d' ' -f1)"
           brew untap aws/tap 2>/dev/null || true
           brew install libde265 libheif pkg-config opencv exiv2
           heif-info --version || true
@@ -42,6 +43,8 @@ jobs:
       - name: Install dependencies - Linux
         if: runner.os == 'Linux'
         run: |
+          echo "SHA-256: $(sha256sum tests/fixtures/src.heic | cut -d' ' -f1)"
+
           sudo apt-get update
           sudo apt-get install -y \
             libopencv-dev \
@@ -68,6 +71,9 @@ jobs:
       - name: Configure CMake - macOS/Linux
         if: runner.os != 'Windows'
         run: |
+          heif-info tests/fixtures/src.heic
+          heif-convert tests/fixtures/src.heic /tmp/src.png
+
           if [ "$RUNNER_OS" = "macOS" ]; then
             CXX=clang++
           else
@@ -78,6 +84,7 @@ jobs:
             -S "${{ github.workspace }}" \
             -B "${{ github.workspace }}/build" \
             -DCMAKE_BUILD_TYPE=${{ matrix.build-type }} \
+            -DBUILD_TESTING=ON \
             -DCMAKE_CXX_COMPILER="$CXX" \
             -DCMAKE_CXX_STANDARD=17 \
             -DCMAKE_CXX_STANDARD_REQUIRED=ON \
@@ -85,7 +92,6 @@ jobs:
 
       - name: Diagnose Visual Studio
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
@@ -118,14 +124,38 @@ jobs:
           cmake -B build -S "${{ github.workspace }}"
           -DCMAKE_TOOLCHAIN_FILE="$env:RUNVCPKG_VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DCMAKE_BUILD_TYPE=${{ matrix.build-type }}
+          -DBUILD_TESTING=ON
           -DVCPKG_TARGET_TRIPLET=x64-windows
           -DVCPKG_MANIFEST_MODE=ON
           -DVCPKG_MANIFEST_DIR="${{ github.workspace }}\windows"
 
       - name: Check vcpkg_installed - Windows
         if: runner.os == 'Windows'
-        shell: pwsh
         run: |
+          Write-Host "=== Searching for libheif tools ==="
+          Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -in @("heif-info.exe", "heif-convert.exe", "heif-dec.exe") } |
+              Select-Object -ExpandProperty FullName
+
+          Get-ChildItem -Path build\vcpkg_installed -Recurse -File -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match "^heif-(info|convert|dec)\.exe$" } |
+          Select-Object -ExpandProperty FullName
+
+          Write-Host "=== libde265/libheif DLLs ==="
+          Get-ChildItem -Path build\vcpkg_installed\x64-windows -Recurse -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "^(lib)?(heif|de265).*\.dll$" } |
+              Select-Object FullName
+
+          Write-Host "=== LIBHEIF_PLUGIN_PATH ==="
+          Write-Host $env:LIBHEIF_PLUGIN_PATH
+
+          Write-Host "=== inspect portfile.cmake ==="
+          Select-String -Path vcpkg\ports\libheif\portfile.cmake `
+            -Pattern "de265|HEVC|decoder|plugin|WITH_LIBDE265"
+          Select-String -Path vcpkg\ports\libheif\*.cmake `
+            -Pattern "de265|HEVC|decoder|plugin"
+
+
           $manifestDir = "$env:GITHUB_WORKSPACE\windows"
           $vcpkgExe = "$env:RUNVCPKG_VCPKG_ROOT\vcpkg.exe"
           $vcpkgInstalled = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
@@ -152,35 +182,55 @@ jobs:
       # Cross-platform: one-line cmake to avoid syntax issue between Unix and Windows
         run: cmake --build "${{ github.workspace }}/build" --config ${{ matrix.build-type }} --parallel
 
+      - name: Check tests/fixtures directory
+        run: |
+          echo "=== Git check-attr, ls-files ==="
+          git check-attr -a -- ${{ github.workspace }}/tests/fixtures/src.heic
+          git ls-files --eol -- ${{ github.workspace }}/tests/fixtures/src.heic
+
       - name: Check before running CTest - Windows
         if: runner.os == 'Windows'
         run: |
-          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
+          Write-Host "SHA-256: $((Get-FileHash tests/fixtures/src.heic -Algorithm SHA256).Hash.ToLower())"
 
-          Write-Host "=== ALL libheif-related files ==="
+          $installed = "$env:GITHUB_WORKSPACE\build\vcpkg_installed\x64-windows"
+          Write-Host "=== HEIF/HEVC binaries ==="
           Get-ChildItem $installed -Recurse -File |
               Where-Object {
-                  $_.Name -match 'heif|de265|x265'
-              } |
-              Select-Object FullName, Length
-
-          Write-Host "=== plugin directories ==="
-          Get-ChildItem $installed -Recurse -Directory |
-              Where-Object {
-                  $_.FullName -match 'plugin'
+                  $_.Name -match "(heif|de265)" -and
+                  $_.Extension -in ".dll", ".lib"
               } |
               Select-Object FullName
 
-          Write-Host "=== runtime LIBHEIF_PLUGIN_PATH ==="
-          Write-Host "LIBHEIF_PLUGIN_PATH = [$env:LIBHEIF_PLUGIN_PATH]"
-          Write-Host "OPENCV_IO_PLUGIN_PATH = [$env:OPENCV_IO_PLUGIN_PATH]"
-
-      # - name: Install Python dependencies for Test
-      #   run: |
-      #     python3 -m pip install --upgrade pip
-      #     python3 -m pip install -r ${{ github.workspace }}/tests/requirements.txt
-
-      - name: Test
+      - name: Test - Windows
+        if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build
-        # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
-        run: ctest --build-config ${{ matrix.build-type }} --output-on-failure
+        shell: bash   # Forces Windows to use Bash, keeping 100% code parity
+        run: |
+          # Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
+          #     Where-Object { $_.Name -eq "img_bat.exe" } |
+          #     Select-Object -ExpandProperty FullName
+          CMD1="${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
+          echo "::group::$CMD1"
+          $CMD1
+          echo "::endgroup::"
+          CMD2="${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
+          echo "::group::$CMD2"
+          $CMD2
+          echo "::endgroup::"
+          ctest --build-config ${{ matrix.build-type }} --output-on-failure
+
+      - name: Test - macOS/Linux
+        if: runner.os != 'Windows'
+        working-directory: ${{ github.workspace }}/build
+        run: |
+          find . -name "img_bat" -type f -exec echo "=== File img_bat: {}" \;
+          CMD1="./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
+          echo "::group::$CMD1"
+          $CMD1
+          echo "::endgroup::"
+          CMD2="./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
+          echo "::group::$CMD2"
+          $CMD2
+          echo "::endgroup::"
+          ctest --build-config ${{ matrix.build-type }} --output-on-failure

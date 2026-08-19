@@ -1,0 +1,19 @@
+# Normalize text files to LF
+* text=auto eol=lf
+
+# Text fixtures use LF
+tests/fixtures/** text eol=lf
+
+# Binary image fixtures
+*.heic -text
+*.heif -text
+*.jpg  -text
+*.jpeg -text
+*.png  -text
+*.webp -text
+*.HEIC -text
+*.HEIF -text
+*.JPG  -text
+*.JPEG -text
+*.PNG  -text
+*.WEBP -text

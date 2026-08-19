@@ -68,6 +68,8 @@ if(IMG_BAT_ENABLE_HEIC)
   endif()
 
   target_compile_definitions(img_bat PRIVATE IMG_BAT_WITH_LIBHEIF=1)
+  # Define 'IMG_BAT_ENABLE_DEBUG' for Debug build only
+  target_compile_definitions(img_bat PRIVATE $<$<CONFIG:Debug>:IMG_BAT_ENABLE_DEBUG>)
 endif()
 
 

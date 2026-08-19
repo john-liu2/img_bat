@@ -230,10 +230,33 @@ def test_strip_metadata(img_bat_bin: str, exiv2_bin: str = None):
             assert target_gps.stat().st_size > 0, f"{target_gps.name} became empty"
 
 
+def ensure_valid_heic_fixture(fixture_path: Path) -> None:
+    """Verifies HEIC header magic bytes ('ftyp' at offset 4). Auto-regenerates if corrupt."""
+    is_valid = False
+    if fixture_path.exists():
+        try:
+            with open(fixture_path, "rb") as f:
+                header = f.read(12)
+            if len(header) >= 8 and header[4:8] == b"ftyp":
+                is_valid = True
+        except Exception:
+            pass
+
+    if not is_valid:
+        print(f"Notice: Regenerating binary HEIC fixture at {fixture_path}...")
+        from PIL import Image
+        import pillow_heif
+
+        pillow_heif.register_heif_opener()
+        fixture_path.parent.mkdir(parents=True, exist_ok=True)
+        img = Image.new("RGB", (200, 200), color=(100, 150, 200))
+        img.save(fixture_path, format="HEIF", quality=80)
+
 def test_heic(binary: str, directory: Path) -> None:
     source = write_jpeg(directory)
     heic_dir = directory / "heic"
     png_dir = directory / "png"
+    ensure_valid_heic_fixture(HEIC_FIXTURE)
 
     run(
         binary,
@@ -258,6 +281,18 @@ def test_heic(binary: str, directory: Path) -> None:
     assert "4:2:0" in info_out, (
         f"HEIC --info output missing 4:2:0 chroma metadata. Got output:\n{info_out}"
     )
+
+    generated_png_dir = directory / "generated-png"
+    run(
+        binary,
+        "--input",
+        str(heic),
+        "--format",
+        "png",
+        "--output",
+        str(generated_png_dir),
+    )
+    assert (generated_png_dir / "source.png").exists()
 
     run(
         binary,

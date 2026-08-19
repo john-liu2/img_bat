@@ -1,6 +1,10 @@
 #include "heif_io.hpp"
 
 #ifdef IMG_BAT_WITH_LIBHEIF
+#include <libheif/heif.h>
+#include <algorithm>
+#include <cstring>
+#include <fstream>
 #include <iostream>
 #include <opencv2/imgproc.hpp>
 #include <stdexcept>
@@ -36,26 +40,129 @@ void check_heif(heif_error error, const std::string& action) {
   }
 }
 
-cv::Mat read_heif(const fs::path& path) {
-  heif_context* ctx = heif_context_alloc();
-  if (!ctx) throw std::runtime_error("failed to allocate libheif context");
+#ifdef IMG_BAT_ENABLE_DEBUG
+void diagnose_heic_decode(const char* filename)
+{
+    std::cerr << "\n=== direct libheif decode ===\n";
+    std::cerr << "file: " << filename << "\n";
 
-  heif_error err = heif_context_read_from_file(ctx, path.string().c_str(), nullptr);
+    heif_context* ctx = heif_context_alloc();
+    if (!ctx) {
+        std::cerr << "heif_context_alloc: FAILED\n";
+        return;
+    }
+
+    heif_error err = heif_context_read_from_file(
+        ctx,
+        filename,
+        nullptr
+    );
+    std::cerr << "read_from_file:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code != heif_error_Ok) {
+        heif_context_free(ctx);
+        return;
+    }
+
+    int image_count = heif_context_get_number_of_top_level_images(ctx);
+    std::cerr << "top-level images: " << image_count << "\n";
+
+    heif_image_handle* handle = nullptr;
+    err = heif_context_get_primary_image_handle(ctx, &handle);
+    std::cerr << "get_primary_image_handle:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code != heif_error_Ok) {
+        heif_context_free(ctx);
+        return;
+    }
+    std::cerr << "image dimensions: "
+              << heif_image_handle_get_width(handle)
+              << " x "
+              << heif_image_handle_get_height(handle)
+              << "\n";
+
+    heif_image* image = nullptr;
+    err = heif_decode_image(
+        handle,
+        &image,
+        heif_colorspace_RGB,
+        heif_chroma_interleaved_RGB,
+        nullptr
+    );
+    std::cerr << "decode_image:\n"
+              << "  code:    " << err.code << "\n"
+              << "  subcode: " << err.subcode << "\n"
+              << "  message: " << (err.message ? err.message : "(null)") << "\n";
+
+    if (err.code == heif_error_Ok) {
+        std::cerr << "DIRECT DECODE: SUCCESS\n";
+        heif_image_release(image);
+    } else {
+        std::cerr << "DIRECT DECODE: FAILED\n";
+    }
+
+    heif_image_handle_release(handle);
+    heif_context_free(ctx);
+    std::cerr << "=== end direct libheif decode ===\n";
+}
+#endif // IMG_BAT_ENABLE_DEBUG
+
+cv::Mat read_heif(const fs::path& path) {
+  // 1. Open and read the raw binary file using std::ifstream (handles Windows wchar_t paths)
+  std::ifstream file(path, std::ios::binary | std::ios::ate);
+  if (!file.is_open()) {
+    throw std::runtime_error("cannot open HEIC file: " + path.string());
+  }
+
+  const std::streamsize size = file.tellg();
+  if (size <= 0) {
+    throw std::runtime_error("HEIC file is empty: " + path.string());
+  }
+
+  file.seekg(0, std::ios::beg);
+  std::vector<uint8_t> buffer(static_cast<size_t>(size));
+  if (!file.read(reinterpret_cast<char*>(buffer.data()), size)) {
+    throw std::runtime_error("failed to read HEIC file content: " + path.string());
+  }
+
+  // 2. Initialize libheif
+  heif_init(nullptr);
+
+  heif_context* ctx = heif_context_alloc();
+  if (!ctx) {
+    heif_deinit();
+    throw std::runtime_error("failed to allocate libheif context");
+  }
+
+  // 3. Decode from memory buffer
+  heif_error err = heif_context_read_from_memory_without_copy(ctx, buffer.data(), buffer.size(), nullptr);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
-    throw std::runtime_error("cannot read HEIC: " + std::string(err.message));
+    heif_deinit();
+    throw std::runtime_error("cannot read HEIC from memory: code=" + std::to_string(err.code) +
+                             ", subcode=" + std::to_string(err.subcode) +
+                             ", message=" + std::string(err.message));
   }
 
   heif_image_handle* handle = nullptr;
   err = heif_context_get_primary_image_handle(ctx, &handle);
   if (err.code != heif_error_Ok) {
     heif_context_free(ctx);
-    throw std::runtime_error("cannot get primary HEIC handle: " + std::string(err.message));
+    heif_deinit();
+    throw std::runtime_error("cannot get primary HEIC handle: code=" + std::to_string(err.code) +
+                             ", subcode=" + std::to_string(err.subcode) +
+                             ", message=" + std::string(err.message));
   }
 
   heif_decoding_options* options = heif_decoding_options_alloc();
   if (options) {
-    options->strict_decoding = 0; // Relax strict decoding checks for maximum compatibility
+    options->strict_decoding = 0;
   }
 
   heif_image* img = nullptr;
@@ -66,6 +173,7 @@ cv::Mat read_heif(const fs::path& path) {
   heif_context_free(ctx);
 
   if (err.code != heif_error_Ok) {
+    heif_deinit();
     throw std::runtime_error("cannot decode HEIC: code=" + std::to_string(err.code) +
                              ", subcode=" + std::to_string(err.subcode) +
                              ", message=" + std::string(err.message));
@@ -81,6 +189,7 @@ cv::Mat read_heif(const fs::path& path) {
     std::memcpy(rgb.ptr(y), data + y * stride, width * 3);
   }
   heif_image_release(img);
+  heif_deinit();
 
   cv::Mat bgr;
   cv::cvtColor(rgb, bgr, cv::COLOR_RGB2BGR);
