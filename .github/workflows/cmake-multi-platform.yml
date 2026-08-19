@@ -205,10 +205,11 @@ jobs:
       - name: Test - Windows
         if: runner.os == 'Windows'
         working-directory: ${{ github.workspace }}/build
+        shell: bash   # Forces Windows to use Bash, keeping 100% code parity
         run: |
-          Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -eq "img_bat.exe" } |
-              Select-Object -ExpandProperty FullName
+          # Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
+          #     Where-Object { $_.Name -eq "img_bat.exe" } |
+          #     Select-Object -ExpandProperty FullName
           CMD1="${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
           echo "::group::$CMD1"
           $CMD1
@@ -222,7 +223,6 @@ jobs:
       - name: Test - macOS/Linux
         if: runner.os != 'Windows'
         working-directory: ${{ github.workspace }}/build
-        # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
         run: |
           find . -name "img_bat" -type f -exec echo "=== File img_bat: {}" \;
           CMD1="./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
