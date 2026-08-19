@@ -127,8 +127,9 @@ void process_one(const fs::path& input, const Options& opt) {
   cv::Mat image;
   if (input_ext == ".heic" || input_ext == ".heif") {
 #ifdef IMG_BAT_WITH_LIBHEIF
-    // debug
+    #ifdef IMG_BAT_ENABLE_DEBUG
     diagnose_heic_decode(input.string().c_str());
+    #endif
     image = read_heif(input);
 #else
     throw std::runtime_error("HEIC support was not built; install libheif and rebuild");

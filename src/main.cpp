@@ -6,6 +6,7 @@
 #ifdef IMG_BAT_WITH_LIBHEIF
 #include <libheif/heif.h>
 
+#ifdef IMG_BAT_ENABLE_DEBUG
 static void print_libheif_diagnostics()
 {
     std::cerr << "=== libheif diagnostics ===\n";
@@ -71,7 +72,6 @@ static void print_libheif_diagnostics()
                   << (name ? name : "(no name)")
                   << "\n";
     }
-
     // Simple yes/no checks.
     std::cerr << "HEVC decoder available: "
               << (heif_have_decoder_for_format(heif_compression_HEVC)
@@ -86,12 +86,15 @@ static void print_libheif_diagnostics()
               << "\n";
     std::cerr << "=== end libheif diagnostics ===\n";
 }
+#endif // IMG_BAT_ENABLE_DEBUG
 #endif
 
 int main(int argc, char** argv) {
 #ifdef IMG_BAT_WITH_LIBHEIF
   heif_init(nullptr);
+  #ifdef IMG_BAT_ENABLE_DEBUG
   print_libheif_diagnostics();
+  #endif
 #endif
 
   int result = 0;

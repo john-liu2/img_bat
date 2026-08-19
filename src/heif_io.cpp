@@ -40,7 +40,7 @@ void check_heif(heif_error error, const std::string& action) {
   }
 }
 
-// debug
+#ifdef IMG_BAT_ENABLE_DEBUG
 void diagnose_heic_decode(const char* filename)
 {
     std::cerr << "\n=== direct libheif decode ===\n";
@@ -111,6 +111,7 @@ void diagnose_heic_decode(const char* filename)
     heif_context_free(ctx);
     std::cerr << "=== end direct libheif decode ===\n";
 }
+#endif // IMG_BAT_ENABLE_DEBUG
 
 cv::Mat read_heif(const fs::path& path) {
   // 1. Open and read the raw binary file using std::ifstream (handles Windows wchar_t paths)
