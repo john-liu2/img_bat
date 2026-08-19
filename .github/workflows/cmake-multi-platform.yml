@@ -209,11 +209,11 @@ jobs:
           Get-ChildItem -Path . -Recurse -File -ErrorAction SilentlyContinue |
               Where-Object { $_.Name -eq "img_bat.exe" } |
               Select-Object -ExpandProperty FullName
-          CMD1 = "${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
+          CMD1="${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
           echo "::group::$CMD1"
           $CMD1
           echo "::endgroup::"
-          CMD2 = "${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
+          CMD2="${{ github.workspace }}\build\${{ matrix.build-type }}\img_bat.exe --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
           echo "::group::$CMD2"
           $CMD2
           echo "::endgroup::"
@@ -225,11 +225,11 @@ jobs:
         # Cross-platform: one-line ctest to avoid syntax issue between Unix and Windows
         run: |
           find . -name "img_bat" -type f -exec echo "=== File img_bat: {}" \;
-          CMD1 = "./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
+          CMD1="./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format png --output tmp_png"
           echo "::group::$CMD1"
           $CMD1
           echo "::endgroup::"
-          CMD2 = "./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
+          CMD2="./img_bat --input ${{ github.workspace }}/tests/fixtures/src.heic --format jpg --output tmp_jpg"
           echo "::group::$CMD2"
           $CMD2
           echo "::endgroup::"
